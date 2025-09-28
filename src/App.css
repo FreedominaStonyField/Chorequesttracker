@@ -53,6 +53,16 @@
   margin: 0;
 }
 
+.hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hero__actions .ghost-button {
+  margin-top: 0;
+}
+
 .user-switcher {
   display: flex;
   flex-direction: column;
@@ -381,6 +391,211 @@
   letter-spacing: 0.08em;
   color: #ffe8ff;
   animation: riseAndFade 2.2s ease forwards;
+}
+
+.admin-app {
+  min-height: 100vh;
+}
+
+.admin-hero {
+  text-align: left;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.admin-card {
+  background: linear-gradient(150deg, rgba(62, 45, 120, 0.72), rgba(99, 64, 149, 0.85));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 20px 45px rgba(10, 5, 30, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.admin-card h2 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-card--summary {
+  background: linear-gradient(150deg, rgba(80, 45, 120, 0.65), rgba(255, 122, 191, 0.4));
+}
+
+.admin-card--summary p {
+  margin: 0.2rem 0;
+  line-height: 1.4;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.admin-field--split {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.admin-field label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.admin-field input,
+.admin-chore-fields input,
+.admin-chore-fields textarea,
+.admin-add-form input,
+.admin-add-form textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(16, 12, 38, 0.55);
+  color: #f9f6ff;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.admin-field input:focus,
+.admin-chore-fields input:focus,
+.admin-chore-fields textarea:focus,
+.admin-add-form input:focus,
+.admin-add-form textarea:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+
+.admin-chore-fields textarea,
+.admin-add-form textarea {
+  min-height: 110px;
+}
+
+.primary-button {
+  width: fit-content;
+  padding: 0.6rem 1.5rem;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #160c26;
+  background: linear-gradient(120deg, #ffd27d, #ff90c2);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(255, 170, 215, 0.35);
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-note {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(33, 115, 103, 0.35);
+  border: 1px solid rgba(101, 231, 210, 0.35);
+}
+
+.admin-warning {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(149, 39, 74, 0.35);
+  border: 1px solid rgba(255, 143, 172, 0.45);
+}
+
+.admin-chores {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-chores-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-chore-row {
+  background: rgba(28, 18, 52, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  box-shadow: 0 14px 30px rgba(8, 5, 25, 0.35);
+}
+
+.admin-chore-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .admin-chore-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-add-form {
+  background: rgba(26, 17, 48, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 14px 30px rgba(8, 5, 25, 0.35);
+}
+
+.admin-add-form h3 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-add-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-empty {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  padding: 1rem 0;
 }
 
 @keyframes riseAndFade {

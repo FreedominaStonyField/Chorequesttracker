@@ -1,5 +1,12 @@
 import type { ChoreTemplate } from './data/choreLibrary';
 
+export type AdminSettings = {
+  baseRewardPool: number;
+  dailyChoresCount: number;
+  minChoreReward: number;
+  maxChoreReward: number;
+};
+
 export type QuestChore = {
   id: string;
   template: ChoreTemplate;
@@ -19,6 +26,7 @@ export type CycleState = {
   unclaimedThisCycle: number;
   dailyBudgets: number[];
   chores: QuestChore[];
+  config: AdminSettings;
 };
 
 export type UserStats = {
@@ -37,4 +45,6 @@ export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';
 export type RootState = {
   activeUser: UserId | null;
   profiles: Record<UserId, ProfileState>;
+  choreLibrary: ChoreTemplate[];
+  adminSettings: AdminSettings;
 };

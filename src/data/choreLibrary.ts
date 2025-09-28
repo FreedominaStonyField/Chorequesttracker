@@ -4,7 +4,7 @@ export type ChoreTemplate = {
   description: string;
 };
 
-export const CHORE_LIBRARY: ChoreTemplate[] = [
+export const DEFAULT_CHORE_LIBRARY: ChoreTemplate[] = [
   {
     id: 'dishes',
     title: 'Dish Duty',

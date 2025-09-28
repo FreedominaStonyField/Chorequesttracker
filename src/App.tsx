@@ -1013,6 +1013,8 @@ function App() {
 
   const cycle = state.cycle;
   const currentPlan = cycle.dailyPlans[cycle.dayIndex];
+  const availableChores = currentPlan?.chores.filter((chore) => !chore.completed) ?? [];
+  const completedChores = currentPlan?.chores.filter((chore) => chore.completed) ?? [];
   const availableBalance = Math.max(
     0,
     activeStats.totalEarned - activeStats.totalCashedOut,
@@ -1076,52 +1078,89 @@ function App() {
           <h2>Today&apos;s quest board</h2>
           {currentPlan && (
             <span className="section-note">
-              Scheduled for {currentPlan.date}. Completed cards show their reward and hero.
+              Scheduled for {currentPlan.date}. Everyone sees the same quest list each day.
             </span>
           )}
         </div>
-        <div className="chore-grid">
-          {currentPlan?.chores.map((chore) => {
-            const cardClasses = ['chore-card', chore.completed ? 'chore-card--completed' : '']
-              .filter(Boolean)
-              .join(' ');
-            const completedByLabel = chore.completedBy
-              ? USER_NAMES[chore.completedBy] ?? 'Unknown hero'
-              : null;
-            return (
-              <article key={chore.id} className={cardClasses}>
-                <div className="chore-card__content">
-                  <span className="quest-label">Quest</span>
-                  <h3>{chore.template.title}</h3>
-                  <p className="chore-description">{chore.template.description}</p>
-                  <p className="reward-placeholder">
-                    {chore.completed ? (
-                      <>
-                        Reward earned: <strong>{formatCash(chore.reward)}</strong>
-                      </>
-                    ) : (
-                      'Reward hidden until completed'
-                    )}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => handleComplete(chore.id)}
-                    disabled={chore.completed}
-                    className="primary-button"
-                  >
-                    {chore.completed ? 'Quest claimed' : 'Mark complete'}
-                  </button>
-                  {chore.completed && completedByLabel && (
-                    <p className="chore-status">Claimed by {completedByLabel}</p>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-          {!currentPlan && (
+        {!currentPlan && (
+          <div className="chore-grid">
             <p className="empty-state">No quests scheduled for today. Check back tomorrow!</p>
-          )}
-        </div>
+          </div>
+        )}
+        {currentPlan && (
+          <div className="chore-groups">
+            <div className="chore-group">
+              <div className="section-heading">
+                <h3>Available quests</h3>
+                <span className="section-note">
+                  {availableChores.length > 0
+                    ? `${availableChores.length} quest${availableChores.length === 1 ? '' : 's'} ready to claim.`
+                    : 'All quests have been claimed today.'}
+                </span>
+              </div>
+              <div className="chore-grid">
+                {availableChores.length === 0 && (
+                  <p className="empty-state">No available quests remain for today.</p>
+                )}
+                {availableChores.map((chore) => (
+                  <article key={chore.id} className="chore-card">
+                    <div className="chore-card__content">
+                      <span className="quest-label">Quest</span>
+                      <h3>{chore.template.title}</h3>
+                      <p className="chore-description">{chore.template.description}</p>
+                      <p className="reward-placeholder">Reward hidden until completed</p>
+                      <button
+                        type="button"
+                        onClick={() => handleComplete(chore.id)}
+                        className="primary-button"
+                      >
+                        Mark complete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="chore-group">
+              <div className="section-heading">
+                <h3>Claimed quests</h3>
+                <span className="section-note">
+                  {completedChores.length > 0
+                    ? `${completedChores.length} quest${completedChores.length === 1 ? '' : 's'} already collected.`
+                    : 'No quests have been claimed yet.'}
+                </span>
+              </div>
+              <div className="chore-grid">
+                {completedChores.length === 0 && (
+                  <p className="empty-state">Complete quests to see rewards revealed here.</p>
+                )}
+                {completedChores.map((chore) => {
+                  const completedByLabel = chore.completedBy
+                    ? USER_NAMES[chore.completedBy] ?? 'Unknown hero'
+                    : null;
+                  return (
+                    <article key={chore.id} className="chore-card chore-card--completed">
+                      <div className="chore-card__content">
+                        <span className="quest-label">Quest</span>
+                        <h3>{chore.template.title}</h3>
+                        <p className="chore-description">{chore.template.description}</p>
+                        <p className="reward-placeholder">
+                          Reward earned: <strong>{formatCash(chore.reward)}</strong>
+                        </p>
+                        <button type="button" className="primary-button" disabled>
+                          Quest claimed
+                        </button>
+                        {completedByLabel && (
+                          <p className="chore-status">Claimed by {completedByLabel}</p>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="popup-layer">

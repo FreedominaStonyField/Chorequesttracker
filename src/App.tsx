@@ -14,7 +14,7 @@ import { randomIntPartition } from './utils/random';
 import { loadState, saveState } from './utils/storage';
 import { addDays, daysBetween, todayISO } from './utils/dates';
 
-const CYCLE_LENGTH_DAYS = 7;
+const CYCLE_LENGTH_DAYS = 1;
 
 const DEFAULT_SETTINGS: AdminSettings = {
   baseRewardPool: 500,
@@ -325,6 +325,13 @@ function synchronizeCycleState(
     config: cloneSettings(base.config ?? settings),
     librarySignature: base.librarySignature ?? signature,
   };
+
+  if (cycle.cycleLength !== CYCLE_LENGTH_DAYS) {
+    const carryOver = computeCarryOver(cycle);
+    return createCycle(today, carryOver, library, settings);
+  }
+
+  cycle.cycleLength = CYCLE_LENGTH_DAYS;
 
   if (settingsChanged(cycle.config, settings) || cycle.librarySignature !== signature) {
     const carryOver = computeCarryOver(cycle);
@@ -752,8 +759,7 @@ function App() {
 
   if (showAdmin) {
     const sanitizedDraft = sanitizeChoreLibrary(choreDrafts);
-    const averageDailyBudget =
-      CYCLE_LENGTH_DAYS > 0 ? settingsDraft.baseRewardPool / CYCLE_LENGTH_DAYS : 0;
+    const dailyRewardBudget = settingsDraft.baseRewardPool;
 
     return (
       <div className="app admin-app">
@@ -801,7 +807,7 @@ function App() {
           <article className="admin-card admin-card--summary">
             <h2>Payout Forecast</h2>
             <p>
-              Average daily budget: <strong>{formatCash(averageDailyBudget)}</strong>
+              Daily reward budget: <strong>{formatCash(dailyRewardBudget)}</strong>
             </p>
             <div className="admin-summary-table">
               <div className="admin-summary-row admin-summary-row--header">
@@ -811,9 +817,9 @@ function App() {
                 <span>Avg</span>
               </div>
               {sanitizedDraft.map((chore) => {
-                const minValue = (chore.minPercent / 100) * averageDailyBudget;
-                const maxValue = (chore.maxPercent / 100) * averageDailyBudget;
-                const avgValue = ((chore.minPercent + chore.maxPercent) / 200) * averageDailyBudget;
+                const minValue = (chore.minPercent / 100) * dailyRewardBudget;
+                const maxValue = (chore.maxPercent / 100) * dailyRewardBudget;
+                const avgValue = ((chore.minPercent + chore.maxPercent) / 200) * dailyRewardBudget;
                 return (
                   <div key={chore.id} className="admin-summary-row">
                     <span>{chore.title}</span>
@@ -1038,7 +1044,10 @@ function App() {
             </div>
           </div>
         </div>
-        <p>Complete today&apos;s quests to reveal your cash rewards. Unclaimed cash rolls into tomorrow.</p>
+        <p>
+          Complete today&apos;s quests to reveal your cash rewards. Every chore stays visible for all
+          players until the board refreshes tomorrow.
+        </p>
       </header>
 
       <section className="wallet">
@@ -1068,7 +1077,8 @@ function App() {
           <h2>Today&apos;s quest board</h2>
           {currentPlan && (
             <span className="section-note">
-              Scheduled for {currentPlan.date}. Everyone sees the same quest list each day.
+              Generated for {currentPlan.date}. All chores remain on the board for everyone until
+              they reset tomorrow.
             </span>
           )}
         </div>

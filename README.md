@@ -1,12 +1,12 @@
 # ChoreQuest Tracker
 
-ChoreQuest Tracker is a gamified daily chore web app inspired by gacha-style quest decks. Each new day flips a fresh set of collectible chore cards. Drawing a card reveals a hidden cash reward, and completing the task pops the payout into your balance. Unclaimed rewards stay banked until the next cycle, ensuring nothing goes to waste.
+ChoreQuest Tracker is a gamified daily chore web app inspired by gacha-style quest decks. Each new day flips a fresh set of collectible chore cards. Drawing a card reveals a hidden cash reward, and completing the task pops the payout into your balance. Unclaimed rewards stay banked until the next day, ensuring nothing goes to waste.
 
 ## Key Features
 
-- **Daily quest deck** – Five randomized chore cards drawn from a curated library each day.
-- **Hidden cash rewards** – Dollar values are assigned from a pre-generated cycle pool and stay hidden until you flip a card.
-- **Cycle management** – Seven-day cycles automatically roll over with unclaimed rewards carried forward.
+- **Daily quest deck** – Every chore card from the shared library appears for all players each day.
+- **Hidden cash rewards** – Dollar values are pre-generated from the daily pool and stay secret until you flip a card.
+- **Rollover management** – Unclaimed rewards automatically roll into the next day’s pool.
 - **Profile switching** – Basic login swaps between Fransisco, Lewis, Jero, and Saffire with separate ledgers.
 - **Progress tracking** – Track total cash earned, withdrawn, and rollover balances.
 - **Animated rewards** – Claiming a chore triggers a celebratory pop-up so you feel the win.

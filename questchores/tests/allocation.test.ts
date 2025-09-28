@@ -16,6 +16,9 @@ const baseState: AppState = {
     { id: 'k2', userId: 'u2', choreId: 'c2', dateISO: '2024-01-01' },
   ],
   payouts: [],
+  currentCycle: null,
+  dailyChores: [],
+  dailyRollovers: [],
   config: {
     cycleDays: 10,
     cashPoolTotal: 100,

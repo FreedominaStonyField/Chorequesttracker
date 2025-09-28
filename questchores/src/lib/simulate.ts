@@ -33,7 +33,7 @@ function sumPayouts(payouts: Payout[], predicate: (p: Payout) => boolean) {
 }
 
 export function planDailyAllocation(state: AppState, dateISO: string): AllocationPlan {
-  const { config, completions, chores, payouts } = state;
+  const { config, completions, chores, payouts, currentCycle } = state;
   if (!config.startDateISO) {
     return { dailyBudget: 0, remainingPool: config.cashPoolTotal, remainingDays: 0, totalSuggested: 0, totalFinal: 0, entries: [] };
   }
@@ -43,7 +43,8 @@ export function planDailyAllocation(state: AppState, dateISO: string): Allocatio
   }
 
   const payoutsBefore = sumPayouts(payouts, (p) => withinCycle(p.dateISO, config) && dayIndex(p.dateISO, config) < idx);
-  const remainingPool = Math.max(0, config.cashPoolTotal - payoutsBefore);
+  const fundingPool = currentCycle?.fundingPool ?? config.cashPoolTotal;
+  const remainingPool = Math.max(0, fundingPool - payoutsBefore);
   const remainingDays = Math.max(1, config.cycleDays - idx);
   const dailyBudget = floor2(remainingPool / remainingDays);
 

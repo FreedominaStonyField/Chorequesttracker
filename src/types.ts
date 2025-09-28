@@ -26,8 +26,15 @@ export type UserStats = {
   totalCashedOut: number;
 };
 
-export type AppState = {
+export type ProfileState = {
   user: UserStats;
   cycle: CycleState;
   lastAccessDate: string; // ISO date
+};
+
+export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';
+
+export type RootState = {
+  activeUser: UserId | null;
+  profiles: Record<UserId, ProfileState>;
 };

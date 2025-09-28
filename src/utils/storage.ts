@@ -1,21 +1,21 @@
-import type { AppState } from '../types';
+import type { RootState } from '../types';
 
-const STORAGE_KEY = 'chorequest-state-v1';
+const STORAGE_KEY = 'chorequest-state-v2';
 
-export function loadState(): AppState | null {
+export function loadState(): RootState | null {
   if (typeof window === 'undefined') return null;
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as AppState;
+    return JSON.parse(raw) as RootState;
   } catch (error) {
     console.error('Failed to load state', error);
     return null;
   }
 }
 
-export function saveState(state: AppState): void {
+export function saveState(state: RootState): void {
   if (typeof window === 'undefined') return;
 
   try {

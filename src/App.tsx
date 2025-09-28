@@ -10,7 +10,7 @@ import type {
   UserId,
   UserStats,
 } from './types';
-import { pickRandom, randomIntPartition } from './utils/random';
+import { randomIntPartition } from './utils/random';
 import { loadState, saveState } from './utils/storage';
 import { addDays, daysBetween, todayISO } from './utils/dates';
 
@@ -18,7 +18,6 @@ const CYCLE_LENGTH_DAYS = 7;
 
 const DEFAULT_SETTINGS: AdminSettings = {
   baseRewardPool: 500,
-  dailyChoresCount: 5,
 };
 
 const USERS: { id: UserId; name: string }[] = [
@@ -55,14 +54,17 @@ const slugify = (value: string) =>
 
 const cloneSettings = (settings: AdminSettings): AdminSettings => ({ ...settings });
 
-const sanitizeSettings = (settings?: AdminSettings | null): AdminSettings => {
+const sanitizeSettings = (
+  settings?: Partial<AdminSettings> | null,
+): AdminSettings => {
   const base = settings ?? DEFAULT_SETTINGS;
-  const baseRewardPool = Math.max(0, Math.floor(Number(base.baseRewardPool) || 0));
-  const dailyChoresCount = Math.max(0, Math.floor(Number(base.dailyChoresCount) || 0));
+  const baseRewardPool = Math.max(
+    0,
+    Math.floor(Number((base as Record<string, unknown>).baseRewardPool) || 0),
+  );
 
   return {
     baseRewardPool,
-    dailyChoresCount,
   };
 };
 
@@ -212,14 +214,21 @@ function allocateRewardsForChores(
   };
 }
 
+function shuffleTemplates(source: readonly ChoreTemplate[]): ChoreTemplate[] {
+  const templates = [...source];
+  for (let index = templates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [templates[index], templates[swapIndex]] = [templates[swapIndex], templates[index]];
+  }
+  return templates;
+}
+
 function generateDailyPlan(
   date: string,
   budget: number,
   library: readonly ChoreTemplate[],
-  settings: AdminSettings,
 ): DailyChorePlan {
-  const count = Math.min(settings.dailyChoresCount, library.length);
-  if (count <= 0) {
+  if (library.length === 0) {
     return {
       date,
       budget,
@@ -228,7 +237,7 @@ function generateDailyPlan(
     };
   }
 
-  const templates = pickRandom(library, count);
+  const templates = shuffleTemplates(library);
   const { rewards, unallocated } = allocateRewardsForChores(budget, templates);
 
   const chores: QuestChore[] = templates.map((template, index) => ({
@@ -255,7 +264,7 @@ function createCycle(
   const rewardPool = settings.baseRewardPool + carryOver;
   const dailyBudgets = randomIntPartition(rewardPool, CYCLE_LENGTH_DAYS, 0);
   const dailyPlans: DailyChorePlan[] = dailyBudgets.map((budget, index) =>
-    generateDailyPlan(addDays(startDate, index), budget, library, settings),
+    generateDailyPlan(addDays(startDate, index), budget, library),
   );
 
   return {
@@ -284,10 +293,7 @@ function computeCarryOver(cycle: CycleState): number {
 }
 
 function settingsChanged(a: AdminSettings, b: AdminSettings): boolean {
-  return (
-    a.baseRewardPool !== b.baseRewardPool ||
-    a.dailyChoresCount !== b.dailyChoresCount
-  );
+  return a.baseRewardPool !== b.baseRewardPool;
 }
 
 function synchronizeCycleState(
@@ -546,13 +552,11 @@ function App() {
   const handleSettingsFieldChange = (field: keyof AdminSettings, value: number) => {
     setSettingsDraft((currentDraft) => {
       const sanitizedValue = Number.isNaN(value) ? 0 : value;
-      const next: AdminSettings = {
+      const safeValue = Math.max(0, Math.floor(sanitizedValue));
+      return {
         ...currentDraft,
-        [field]: field === 'dailyChoresCount'
-          ? Math.max(0, Math.floor(sanitizedValue))
-          : Math.max(0, Math.floor(sanitizedValue)),
+        [field]: safeValue,
       };
-      return next;
     });
   };
 
@@ -786,23 +790,9 @@ function App() {
                 }
               />
             </label>
-            <label className="admin-field">
-              Chores per day
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={settingsDraft.dailyChoresCount}
-                onChange={(event) =>
-                  handleSettingsFieldChange(
-                    'dailyChoresCount',
-                    Number.isNaN(Number(event.target.value))
-                      ? 0
-                      : Number(event.target.value),
-                  )
-                }
-              />
-            </label>
+            <p className="section-note">
+              All chores in the library appear on the daily quest board for every player.
+            </p>
             <button type="button" className="primary-button" onClick={handleSaveSettings}>
               Save reward settings
             </button>

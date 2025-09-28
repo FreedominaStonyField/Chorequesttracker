@@ -2,7 +2,6 @@ import type { ChoreTemplate } from './data/choreLibrary';
 
 export type AdminSettings = {
   baseRewardPool: number;
-  dailyChoresCount: number;
 };
 
 export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';

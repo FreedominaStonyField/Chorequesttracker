@@ -1,6 +1,6 @@
 import type { RootState } from '../types';
 
-const STORAGE_KEY = 'chorequest-state-v5';
+const STORAGE_KEY = 'chorequest-state-v6';
 
 export function loadState(): RootState | null {
   if (typeof window === 'undefined') return null;

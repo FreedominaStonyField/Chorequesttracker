@@ -362,6 +362,14 @@
   cursor: not-allowed;
 }
 
+.chore-status {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: rgba(249, 246, 255, 0.7);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;

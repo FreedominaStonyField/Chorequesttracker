@@ -7,12 +7,15 @@ export type AdminSettings = {
   maxChoreReward: number;
 };
 
+export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';
+
 export type QuestChore = {
   id: string;
   template: ChoreTemplate;
   reward: number;
   revealed: boolean;
   completed: boolean;
+  completedBy?: UserId;
   completionTimestamp?: string;
 };
 
@@ -34,17 +37,10 @@ export type UserStats = {
   totalCashedOut: number;
 };
 
-export type ProfileState = {
-  user: UserStats;
-  cycle: CycleState;
-  lastAccessDate: string; // ISO date
-};
-
-export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';
-
 export type RootState = {
   activeUser: UserId | null;
-  profiles: Record<UserId, ProfileState>;
+  profiles: Record<UserId, UserStats>;
+  cycle: CycleState;
   choreLibrary: ChoreTemplate[];
   adminSettings: AdminSettings;
 };

@@ -3,12 +3,12 @@ import './App.css';
 import { DEFAULT_CHORE_LIBRARY } from './data/choreLibrary';
 import type { ChoreTemplate } from './data/choreLibrary';
 import type {
-  ProfileState,
   CycleState,
   QuestChore,
   RootState,
   UserId,
   AdminSettings,
+  UserStats,
 } from './types';
 import { randomIntPartition, pickRandom } from './utils/random';
 import { loadState, saveState } from './utils/storage';
@@ -30,6 +30,11 @@ const USERS: { id: UserId; name: string }[] = [
   { id: 'saffire', name: 'Saffire' },
 ];
 
+const USER_NAMES: Record<UserId, string> = USERS.reduce(
+  (acc, user) => ({ ...acc, [user.id]: user.name }),
+  {} as Record<UserId, string>,
+);
+
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -39,6 +44,9 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 const formatCash = (amount: number) => currencyFormatter.format(amount);
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
+
+const coerceNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
 const slugify = (value: string) =>
   value
@@ -172,36 +180,25 @@ function settingsChanged(a: AdminSettings, b: AdminSettings): boolean {
   );
 }
 
-function synchronizeProfileState(
-  base: ProfileState | null,
+function synchronizeCycleState(
+  base: CycleState | null,
   today: string,
   library: readonly ChoreTemplate[],
   settings: AdminSettings,
-): ProfileState {
+): CycleState {
   if (!base) {
-    return {
-      user: { totalEarned: 0, totalCashedOut: 0 },
-      cycle: createCycle(today, 0, library, settings),
-      lastAccessDate: today,
-    };
+    return createCycle(today, 0, library, settings);
   }
 
-  const user = { ...base.user };
   const cycle: CycleState = {
-    ...base.cycle,
-    chores: base.cycle.chores.map((chore) => ({ ...chore })),
-    config: base.cycle.config
-      ? cloneSettings(base.cycle.config)
-      : cloneSettings(settings),
+    ...base,
+    chores: base.chores.map((chore) => ({ ...chore })),
+    config: base.config ? cloneSettings(base.config) : cloneSettings(settings),
   };
 
   if (settingsChanged(cycle.config, settings)) {
     const carryOver = computeCarryOver(cycle);
-    return {
-      user,
-      cycle: createCycle(today, carryOver, library, settings),
-      lastAccessDate: today,
-    };
+    return createCycle(today, carryOver, library, settings);
   }
 
   cycle.config = cloneSettings(settings);
@@ -210,11 +207,7 @@ function synchronizeProfileState(
 
   if (daysSinceCycleStart < 0) {
     // Time travel backwards – start a new cycle from today to avoid inconsistencies.
-    return {
-      user,
-      cycle: createCycle(today, 0, library, settings),
-      lastAccessDate: today,
-    };
+    return createCycle(today, 0, library, settings);
   }
 
   if (daysSinceCycleStart >= cycle.cycleLength) {
@@ -222,11 +215,7 @@ function synchronizeProfileState(
     const carryOver =
       computeCarryOver(cycle) + Math.max(0, cyclesPassed - 1) * settings.baseRewardPool;
 
-    return {
-      user,
-      cycle: createCycle(today, carryOver, library, settings),
-      lastAccessDate: today,
-    };
+    return createCycle(today, carryOver, library, settings);
   }
 
   const targetDayIndex = Math.min(
@@ -259,11 +248,7 @@ function synchronizeProfileState(
     );
   }
 
-  return {
-    user,
-    cycle,
-    lastAccessDate: today,
-  };
+  return cycle;
 }
 
 function synchronizeRootState(base: RootState | null, today: string): RootState {
@@ -272,16 +257,38 @@ function synchronizeRootState(base: RootState | null, today: string): RootState 
     sanitizeChoreLibrary(base?.choreLibrary ?? null),
   );
 
-  const profiles = USERS.reduce<Record<UserId, ProfileState>>((acc, user) => {
+  const profiles = USERS.reduce<Record<UserId, UserStats>>((acc, user) => {
     const existing = base?.profiles?.[user.id] ?? null;
-    acc[user.id] = synchronizeProfileState(
-      existing,
-      today,
-      choreLibrary,
-      adminSettings,
+    const existingRecord = (existing ?? {}) as Record<string, unknown> & {
+      user?: Record<string, unknown>;
+    };
+
+    const hasDirectEarned = Object.prototype.hasOwnProperty.call(
+      existingRecord,
+      'totalEarned',
     );
+    const hasDirectCashedOut = Object.prototype.hasOwnProperty.call(
+      existingRecord,
+      'totalCashedOut',
+    );
+
+    const earned = hasDirectEarned
+      ? coerceNumber(existingRecord.totalEarned)
+      : coerceNumber(existingRecord.user?.['totalEarned']);
+    const cashedOut = hasDirectCashedOut
+      ? coerceNumber(existingRecord.totalCashedOut)
+      : coerceNumber(existingRecord.user?.['totalCashedOut']);
+
+    acc[user.id] = { totalEarned: earned, totalCashedOut: cashedOut };
     return acc;
-  }, {} as Record<UserId, ProfileState>);
+  }, {} as Record<UserId, UserStats>);
+
+  const cycle = synchronizeCycleState(
+    base?.cycle ?? null,
+    today,
+    choreLibrary,
+    adminSettings,
+  );
 
   const activeUser = base?.activeUser && profiles[base.activeUser]
     ? base.activeUser
@@ -290,6 +297,7 @@ function synchronizeRootState(base: RootState | null, today: string): RootState 
   return {
     activeUser,
     profiles,
+    cycle,
     choreLibrary,
     adminSettings,
   };
@@ -345,7 +353,7 @@ function App() {
   }, []);
 
   const activeUserId = state?.activeUser ?? null;
-  const activeProfile = activeUserId ? state?.profiles[activeUserId] : null;
+  const activeStats = activeUserId ? state?.profiles[activeUserId] : null;
 
   const applyAdminSettings = (nextSettings: AdminSettings) => {
     setState((current) => {
@@ -462,9 +470,9 @@ function App() {
   }, [activeUserId]);
 
   const availableBalance = useMemo(() => {
-    if (!activeProfile) return 0;
-    return activeProfile.user.totalEarned - activeProfile.user.totalCashedOut;
-  }, [activeProfile]);
+    if (!activeStats) return 0;
+    return activeStats.totalEarned - activeStats.totalCashedOut;
+  }, [activeStats]);
 
   const handleSelectUser = (userId: UserId) => {
     setState((current) => {
@@ -475,21 +483,17 @@ function App() {
 
   const handleReveal = (choreId: string) => {
     setState((current) => {
-      if (!current?.activeUser) return current;
-      const profile = current.profiles[current.activeUser];
+      if (!current) return current;
       const cycle = {
-        ...profile.cycle,
-        chores: profile.cycle.chores.map((chore) =>
+        ...current.cycle,
+        chores: current.cycle.chores.map((chore) =>
           chore.id === choreId ? { ...chore, revealed: true } : chore,
         ),
       };
 
       return {
         ...current,
-        profiles: {
-          ...current.profiles,
-          [current.activeUser]: { ...profile, cycle },
-        },
+        cycle,
       };
     });
   };
@@ -497,17 +501,19 @@ function App() {
   const handleComplete = (choreId: string) => {
     let newPopup: RewardPopup | null = null;
     setState((current) => {
-      if (!current?.activeUser) return current;
-      const profile = current.profiles[current.activeUser];
-      const target = profile.cycle.chores.find((chore) => chore.id === choreId);
+      const actor = current?.activeUser;
+      if (!actor) return current;
+      const stats = current.profiles[actor];
+      const target = current.cycle.chores.find((chore) => chore.id === choreId);
       if (!target || target.completed) return current;
 
-      const updatedChores = profile.cycle.chores.map((chore) =>
+      const updatedChores = current.cycle.chores.map((chore) =>
         chore.id === choreId
           ? {
               ...chore,
               revealed: true,
               completed: true,
+              completedBy: actor,
               completionTimestamp: new Date().toISOString(),
             }
           : chore,
@@ -519,21 +525,16 @@ function App() {
         label: target.template.title,
       };
 
-      const updatedProfile: ProfileState = {
-        ...profile,
-        user: {
-          ...profile.user,
-          totalEarned: profile.user.totalEarned + target.reward,
-        },
-        cycle: { ...profile.cycle, chores: updatedChores },
-      };
-
       return {
         ...current,
         profiles: {
           ...current.profiles,
-          [current.activeUser]: updatedProfile,
+          [actor]: {
+            ...stats,
+            totalEarned: stats.totalEarned + target.reward,
+          },
         },
+        cycle: { ...current.cycle, chores: updatedChores },
       };
     });
 
@@ -550,25 +551,22 @@ function App() {
 
   const handleCashOut = (amount: number) => {
     setState((current) => {
-      if (!current?.activeUser) return current;
-      const profile = current.profiles[current.activeUser];
-      const available =
-        profile.user.totalEarned - profile.user.totalCashedOut;
+      const actor = current?.activeUser;
+      if (!actor) return current;
+      const stats = current.profiles[actor];
+      const available = stats.totalEarned - stats.totalCashedOut;
       const value = Math.min(amount, available);
       if (value <= 0) return current;
-      const updatedProfile: ProfileState = {
-        ...profile,
-        user: {
-          ...profile.user,
-          totalCashedOut: profile.user.totalCashedOut + value,
-        },
+      const updatedStats: UserStats = {
+        ...stats,
+        totalCashedOut: stats.totalCashedOut + value,
       };
 
       return {
         ...current,
         profiles: {
           ...current.profiles,
-          [current.activeUser]: updatedProfile,
+          [actor]: updatedStats,
         },
       };
     });
@@ -576,19 +574,13 @@ function App() {
 
   const handleReset = () => {
     setState((current) => {
-      if (!current?.activeUser) return current;
-      const today = todayISO();
-      const resetProfile = synchronizeProfileState(
-        null,
-        today,
-        current.choreLibrary,
-        current.adminSettings,
-      );
+      const actor = current?.activeUser;
+      if (!actor) return current;
       return {
         ...current,
         profiles: {
           ...current.profiles,
-          [current.activeUser]: resetProfile,
+          [actor]: { totalEarned: 0, totalCashedOut: 0 },
         },
       };
     });
@@ -833,7 +825,7 @@ function App() {
     );
   }
 
-  if (!activeProfile) {
+  if (!activeUserId || !activeStats) {
     return (
       <div className="app login-screen">
         <header className="hero">
@@ -848,7 +840,7 @@ function App() {
         <section className="login-panel">
           <h2>Choose your player</h2>
           <p className="section-note">
-            Each player has their own quest cycle and cash ledger. Pick one to log in.
+            Everyone shares the same quest deck—log in to claim chores under your name and track your cash.
           </p>
           <div className="login-grid">
             {USERS.map((user) => (
@@ -867,7 +859,7 @@ function App() {
     );
   }
 
-  const { cycle } = activeProfile;
+  const cycle = state.cycle;
   const cycleDay = cycle.dayIndex + 1;
   const daysRemaining = Math.max(cycle.cycleLength - cycleDay, 0);
   const dayBudget = cycle.dailyBudgets[cycle.dayIndex] ?? 0;
@@ -945,8 +937,8 @@ function App() {
 
         <div className="stat-card">
           <h2>Your Wallet</h2>
-          <p className="stat-primary">Earned: {formatCash(activeProfile.user.totalEarned)}</p>
-          <p className="stat-subtle">Withdrawn: {formatCash(activeProfile.user.totalCashedOut)}</p>
+          <p className="stat-primary">Earned: {formatCash(activeStats.totalEarned)}</p>
+          <p className="stat-subtle">Withdrawn: {formatCash(activeStats.totalCashedOut)}</p>
           <p className="stat-subtle">Available: {formatCash(availableBalance)}</p>
           <button
             type="button"
@@ -981,9 +973,18 @@ function App() {
                     <span className="quest-label">Quest</span>
                     <h3>{chore.template.title}</h3>
                     <p>Tap to draw your reward</p>
-                    <button type="button" onClick={() => handleReveal(chore.id)}>
-                      Draw
+                    <button
+                      type="button"
+                      onClick={() => handleReveal(chore.id)}
+                      disabled={chore.completed}
+                    >
+                      {chore.completed ? 'Completed' : 'Draw'}
                     </button>
+                    {chore.completed && chore.completedBy && (
+                      <span className="chore-status">
+                        Claimed by {USER_NAMES[chore.completedBy] ?? 'another hero'}
+                      </span>
+                    )}
                   </div>
                   <div className="chore-card__face chore-card__face--back">
                     <span className="quest-label">Reward Revealed</span>
@@ -997,6 +998,11 @@ function App() {
                     >
                       {chore.completed ? 'Claimed' : 'Complete quest'}
                     </button>
+                    {chore.completed && chore.completedBy && (
+                      <p className="chore-status">
+                        Claimed by {USER_NAMES[chore.completedBy] ?? 'another hero'}
+                      </p>
+                    )}
                   </div>
                 </div>
               </article>
@@ -1007,7 +1013,7 @@ function App() {
 
       <footer className="footer">
         <button type="button" className="ghost-button" onClick={handleReset}>
-          Reset this profile
+          Reset your wallet
         </button>
         <span>Next cycle starts {addDays(cycle.startDate, cycle.cycleLength)}.</span>
       </footer>

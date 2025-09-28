@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
-import { DEFAULT_CHORE_LIBRARY } from './data/choreLibrary';
-import type { ChoreTemplate } from './data/choreLibrary';
+import { DEFAULT_CHORE_LIBRARY, type ChoreTemplate } from './data/choreLibrary';
 import type {
+  AdminSettings,
   CycleState,
+  DailyChorePlan,
   QuestChore,
   RootState,
   UserId,
-  AdminSettings,
   UserStats,
 } from './types';
-import { randomIntPartition, pickRandom } from './utils/random';
+import { pickRandom, randomIntPartition } from './utils/random';
 import { loadState, saveState } from './utils/storage';
 import { addDays, daysBetween, todayISO } from './utils/dates';
 
@@ -19,8 +19,6 @@ const CYCLE_LENGTH_DAYS = 7;
 const DEFAULT_SETTINGS: AdminSettings = {
   baseRewardPool: 500,
   dailyChoresCount: 5,
-  minChoreReward: 10,
-  maxChoreReward: 120,
 };
 
 const USERS: { id: UserId; name: string }[] = [
@@ -55,40 +53,72 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 32) || 'chore';
 
+const cloneSettings = (settings: AdminSettings): AdminSettings => ({ ...settings });
+
 const sanitizeSettings = (settings?: AdminSettings | null): AdminSettings => {
   const base = settings ?? DEFAULT_SETTINGS;
-  const dailyChoresCount = Math.max(0, Math.floor(base.dailyChoresCount));
-  const minChoreReward = Math.max(0, Math.floor(base.minChoreReward));
-  const maxChoreReward = Math.max(minChoreReward, Math.floor(base.maxChoreReward));
-  const baseRewardPool = Math.max(0, Math.floor(base.baseRewardPool));
+  const baseRewardPool = Math.max(0, Math.floor(Number(base.baseRewardPool) || 0));
+  const dailyChoresCount = Math.max(0, Math.floor(Number(base.dailyChoresCount) || 0));
 
   return {
     baseRewardPool,
     dailyChoresCount,
-    minChoreReward,
-    maxChoreReward,
   };
 };
 
-const cloneSettings = (settings: AdminSettings): AdminSettings => ({ ...settings });
+const toPercent = (value: unknown, fallback: number) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(numeric * 100) / 100));
+};
 
 const sanitizeChoreLibrary = (
   library?: readonly Partial<ChoreTemplate>[] | null,
 ): ChoreTemplate[] => {
   const source = library && library.length > 0 ? library : DEFAULT_CHORE_LIBRARY;
-  return source.map((entry, index) => ({
-    id: (entry?.id ?? '').toString().trim().length > 0
-      ? (entry?.id ?? '').toString().trim()
-      : `chore-${index}`,
-    title: (entry?.title ?? '').toString().trim().length > 0
-      ? (entry?.title ?? '').toString().trim()
-      : `Chore ${index + 1}`,
-    description: (entry?.description ?? '').toString().trim(),
-  }));
+  return source.map((entry, index) => {
+    const idSource = (entry?.id ?? '').toString().trim();
+    const fallbackId = `chore-${index}`;
+    const minPercent = toPercent(
+      entry?.minPercent,
+      DEFAULT_CHORE_LIBRARY[index % DEFAULT_CHORE_LIBRARY.length]?.minPercent ?? 0,
+    );
+    const maxPercent = Math.max(
+      minPercent,
+      toPercent(
+        entry?.maxPercent,
+        DEFAULT_CHORE_LIBRARY[index % DEFAULT_CHORE_LIBRARY.length]?.maxPercent ?? minPercent,
+      ),
+    );
+
+    return {
+      id: idSource.length > 0 ? idSource : fallbackId,
+      title:
+        (entry?.title ?? '').toString().trim().length > 0
+          ? (entry?.title ?? '').toString().trim()
+          : `Chore ${index + 1}`,
+      description: (entry?.description ?? '').toString().trim(),
+      minPercent,
+      maxPercent,
+    };
+  });
 };
 
 const cloneChoreLibrary = (library: readonly ChoreTemplate[]): ChoreTemplate[] =>
   library.map((entry) => ({ ...entry }));
+
+const getLibrarySignature = (library: readonly ChoreTemplate[]): string =>
+  library
+    .map(
+      (chore) =>
+        `${chore.id}|${chore.title}|${chore.description}|${chore.minPercent}|${chore.maxPercent}`,
+    )
+    .join('::');
+
+type AllocationResult = {
+  rewards: number[];
+  unallocated: number;
+};
 
 type RewardPopup = {
   id: string;
@@ -96,31 +126,124 @@ type RewardPopup = {
   label: string;
 };
 
-function generateChoresForBudget(
+function allocateRewardsForChores(
+  budget: number,
+  templates: readonly ChoreTemplate[],
+): AllocationResult {
+  if (budget <= 0 || templates.length === 0) {
+    return {
+      rewards: templates.map(() => 0),
+      unallocated: Math.max(0, budget),
+    };
+  }
+
+  const entries = templates.map((template) => {
+    const minAmount = Math.floor((template.minPercent / 100) * budget);
+    const maxAmount = Math.floor((template.maxPercent / 100) * budget);
+    const safeMax = Math.max(minAmount, maxAmount);
+    return {
+      minAmount,
+      maxAmount: safeMax,
+      allocated: 0,
+    };
+  });
+
+  let minTotal = entries.reduce((sum, entry) => sum + entry.minAmount, 0);
+
+  if (minTotal > budget) {
+    const scale = budget / (minTotal || 1);
+    minTotal = 0;
+    entries.forEach((entry) => {
+      const scaledMin = Math.floor(entry.minAmount * scale);
+      const scaledMax = Math.max(scaledMin, Math.floor(entry.maxAmount * scale));
+      entry.minAmount = scaledMin;
+      entry.maxAmount = scaledMax;
+      minTotal += scaledMin;
+    });
+  }
+
+  const totalFlex = entries.reduce(
+    (sum, entry) => sum + Math.max(entry.maxAmount - entry.minAmount, 0),
+    0,
+  );
+  const available = Math.max(0, budget - minTotal);
+  const usableExtra = Math.min(available, totalFlex);
+
+  const weights = entries.map(() => Math.random());
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+
+  entries.forEach((entry, index) => {
+    const flexCapacity = Math.max(entry.maxAmount - entry.minAmount, 0);
+    if (flexCapacity <= 0) {
+      entry.allocated = entry.minAmount;
+      return;
+    }
+    const share = Math.floor((weights[index] / weightTotal) * usableExtra);
+    entry.allocated = entry.minAmount + Math.min(flexCapacity, share);
+  });
+
+  let distributedExtra = entries.reduce(
+    (sum, entry) => sum + (entry.allocated - entry.minAmount),
+    0,
+  );
+  let remainder = usableExtra - distributedExtra;
+
+  while (remainder > 0) {
+    let progressed = false;
+    for (const entry of entries) {
+      const flexCapacity = Math.max(entry.maxAmount - entry.minAmount, 0);
+      const used = entry.allocated - entry.minAmount;
+      const remainingFlex = flexCapacity - used;
+      if (remainingFlex <= 0) continue;
+      entry.allocated += 1;
+      remainder -= 1;
+      progressed = true;
+      if (remainder <= 0) break;
+    }
+    if (!progressed) break;
+  }
+
+  const totalAllocated = entries.reduce((sum, entry) => sum + entry.allocated, 0);
+  const unallocated = Math.max(0, budget - totalAllocated);
+
+  return {
+    rewards: entries.map((entry) => entry.allocated),
+    unallocated,
+  };
+}
+
+function generateDailyPlan(
+  date: string,
   budget: number,
   library: readonly ChoreTemplate[],
   settings: AdminSettings,
-): QuestChore[] {
+): DailyChorePlan {
   const count = Math.min(settings.dailyChoresCount, library.length);
-  if (count <= 0) return [];
+  if (count <= 0) {
+    return {
+      date,
+      budget,
+      unallocated: budget,
+      chores: [],
+    };
+  }
 
   const templates = pickRandom(library, count);
-  const minPerChore =
-    budget >= count * settings.minChoreReward ? settings.minChoreReward : 0;
-  const rewards = randomIntPartition(
-    budget,
-    templates.length,
-    minPerChore,
-    settings.maxChoreReward,
-  );
+  const { rewards, unallocated } = allocateRewardsForChores(budget, templates);
 
-  return templates.map((template, index) => ({
+  const chores: QuestChore[] = templates.map((template, index) => ({
     id: `${template.id}-${generateId()}`,
     template,
     reward: rewards[index] ?? 0,
-    revealed: false,
     completed: false,
   }));
+
+  return {
+    date,
+    budget,
+    unallocated,
+    chores,
+  };
 }
 
 function createCycle(
@@ -129,15 +252,10 @@ function createCycle(
   library: readonly ChoreTemplate[],
   settings: AdminSettings,
 ): CycleState {
-  const effectiveChores = Math.min(settings.dailyChoresCount, library.length);
   const rewardPool = settings.baseRewardPool + carryOver;
-  const minDailyTotal = settings.minChoreReward * effectiveChores;
-  const canGuaranteeMinimum =
-    effectiveChores > 0 && rewardPool >= CYCLE_LENGTH_DAYS * minDailyTotal;
-  const dailyBudgets = randomIntPartition(
-    rewardPool,
-    CYCLE_LENGTH_DAYS,
-    canGuaranteeMinimum ? minDailyTotal : 0,
+  const dailyBudgets = randomIntPartition(rewardPool, CYCLE_LENGTH_DAYS, 0);
+  const dailyPlans: DailyChorePlan[] = dailyBudgets.map((budget, index) =>
+    generateDailyPlan(addDays(startDate, index), budget, library, settings),
   );
 
   return {
@@ -147,36 +265,28 @@ function createCycle(
     cycleLength: CYCLE_LENGTH_DAYS,
     rewardPool,
     carryOverFromPreviousCycle: carryOver,
-    unclaimedThisCycle: 0,
     dailyBudgets,
-    chores: generateChoresForBudget(dailyBudgets[0] ?? 0, library, settings),
+    dailyPlans,
     config: cloneSettings(settings),
+    librarySignature: getLibrarySignature(library),
   };
 }
 
 function computeCarryOver(cycle: CycleState): number {
-  const currentUnclaimed = cycle.chores
-    .filter((chore) => !chore.completed)
-    .reduce((sum, chore) => sum + chore.reward, 0);
-
-  const futureBudgets = cycle.dailyBudgets
-    .slice(cycle.dayIndex + 1)
-    .reduce((sum, value) => sum + value, 0);
-
-  return (
-    cycle.carryOverFromPreviousCycle +
-    cycle.unclaimedThisCycle +
-    currentUnclaimed +
-    futureBudgets
-  );
+  const plans = Array.isArray(cycle.dailyPlans) ? cycle.dailyPlans : [];
+  return plans.reduce((sum, plan) => {
+    const chores = Array.isArray(plan.chores) ? plan.chores : [];
+    const incompleteRewards = chores
+      .filter((chore) => !chore.completed)
+      .reduce((acc, chore) => acc + chore.reward, 0);
+    return sum + incompleteRewards + (plan.unallocated ?? 0);
+  }, cycle.carryOverFromPreviousCycle ?? 0);
 }
 
 function settingsChanged(a: AdminSettings, b: AdminSettings): boolean {
   return (
     a.baseRewardPool !== b.baseRewardPool ||
-    a.dailyChoresCount !== b.dailyChoresCount ||
-    a.minChoreReward !== b.minChoreReward ||
-    a.maxChoreReward !== b.maxChoreReward
+    a.dailyChoresCount !== b.dailyChoresCount
   );
 }
 
@@ -190,65 +300,50 @@ function synchronizeCycleState(
     return createCycle(today, 0, library, settings);
   }
 
+  if (!Array.isArray(base.dailyPlans) || base.dailyPlans.length !== base.cycleLength) {
+    const fallbackCarry =
+      Math.max(0, Number((base as Record<string, unknown>)?.['carryOverFromPreviousCycle']) || 0) +
+      Math.max(0, Number((base as Record<string, unknown>)?.['unclaimedThisCycle']) || 0);
+    return createCycle(today, fallbackCarry, library, settings);
+  }
+
+  const signature = getLibrarySignature(library);
+
   const cycle: CycleState = {
     ...base,
-    chores: base.chores.map((chore) => ({ ...chore })),
-    config: base.config ? cloneSettings(base.config) : cloneSettings(settings),
+    dailyBudgets: [...base.dailyBudgets],
+    dailyPlans: base.dailyPlans.map((plan) => ({
+      ...plan,
+      chores: plan.chores.map((chore) => ({ ...chore })),
+    })),
+    config: cloneSettings(base.config ?? settings),
+    librarySignature: base.librarySignature ?? signature,
   };
 
-  if (settingsChanged(cycle.config, settings)) {
+  if (settingsChanged(cycle.config, settings) || cycle.librarySignature !== signature) {
     const carryOver = computeCarryOver(cycle);
     return createCycle(today, carryOver, library, settings);
   }
 
   cycle.config = cloneSettings(settings);
+  cycle.librarySignature = signature;
 
-  const daysSinceCycleStart = daysBetween(cycle.startDate, today);
+  const daysSinceStart = daysBetween(cycle.startDate, today);
 
-  if (daysSinceCycleStart < 0) {
-    // Time travel backwards – start a new cycle from today to avoid inconsistencies.
+  if (daysSinceStart < 0) {
     return createCycle(today, 0, library, settings);
   }
 
-  if (daysSinceCycleStart >= cycle.cycleLength) {
-    const cyclesPassed = Math.floor(daysSinceCycleStart / cycle.cycleLength) || 1;
-    const carryOver =
-      computeCarryOver(cycle) + Math.max(0, cyclesPassed - 1) * settings.baseRewardPool;
-
+  if (daysSinceStart >= cycle.cycleLength) {
+    const carryOver = computeCarryOver(cycle);
     return createCycle(today, carryOver, library, settings);
   }
 
-  const targetDayIndex = Math.min(
-    daysSinceCycleStart,
-    cycle.cycleLength - 1,
-  );
-
-  if (targetDayIndex > cycle.dayIndex) {
-    const currentUnclaimed = cycle.chores
-      .filter((chore) => !chore.completed)
-      .reduce((sum, chore) => sum + chore.reward, 0);
-
-    let updatedUnclaimed = cycle.unclaimedThisCycle + currentUnclaimed;
-    for (let day = cycle.dayIndex + 1; day < targetDayIndex; day += 1) {
-      updatedUnclaimed += cycle.dailyBudgets[day] ?? 0;
-    }
-
-    cycle.dayIndex = targetDayIndex;
-    cycle.unclaimedThisCycle = updatedUnclaimed;
-    cycle.chores = generateChoresForBudget(
-      cycle.dailyBudgets[targetDayIndex] ?? 0,
-      library,
-      settings,
-    );
-  } else if (cycle.chores.length === 0) {
-    cycle.chores = generateChoresForBudget(
-      cycle.dailyBudgets[targetDayIndex] ?? 0,
-      library,
-      settings,
-    );
-  }
-
-  return cycle;
+  const nextDayIndex = Math.min(daysSinceStart, cycle.cycleLength - 1);
+  return {
+    ...cycle,
+    dayIndex: nextDayIndex,
+  };
 }
 
 function synchronizeRootState(base: RootState | null, today: string): RootState {
@@ -259,25 +354,19 @@ function synchronizeRootState(base: RootState | null, today: string): RootState 
 
   const profiles = USERS.reduce<Record<UserId, UserStats>>((acc, user) => {
     const existing = base?.profiles?.[user.id] ?? null;
-    const existingRecord = (existing ?? {}) as Record<string, unknown> & {
+    const record = (existing ?? {}) as Record<string, unknown> & {
       user?: Record<string, unknown>;
     };
 
-    const hasDirectEarned = Object.prototype.hasOwnProperty.call(
-      existingRecord,
-      'totalEarned',
-    );
-    const hasDirectCashedOut = Object.prototype.hasOwnProperty.call(
-      existingRecord,
-      'totalCashedOut',
-    );
+    const hasDirectEarned = Object.prototype.hasOwnProperty.call(record, 'totalEarned');
+    const hasDirectCashedOut = Object.prototype.hasOwnProperty.call(record, 'totalCashedOut');
 
     const earned = hasDirectEarned
-      ? coerceNumber(existingRecord.totalEarned)
-      : coerceNumber(existingRecord.user?.['totalEarned']);
+      ? coerceNumber(record.totalEarned)
+      : coerceNumber(record.user?.['totalEarned']);
     const cashedOut = hasDirectCashedOut
-      ? coerceNumber(existingRecord.totalCashedOut)
-      : coerceNumber(existingRecord.user?.['totalCashedOut']);
+      ? coerceNumber(record.totalCashedOut)
+      : coerceNumber(record.user?.['totalCashedOut']);
 
     acc[user.id] = { totalEarned: earned, totalCashedOut: cashedOut };
     return acc;
@@ -290,9 +379,7 @@ function synchronizeRootState(base: RootState | null, today: string): RootState 
     adminSettings,
   );
 
-  const activeUser = base?.activeUser && profiles[base.activeUser]
-    ? base.activeUser
-    : null;
+  const activeUser = base?.activeUser && profiles[base.activeUser] ? base.activeUser : null;
 
   return {
     activeUser,
@@ -315,6 +402,8 @@ function App() {
   );
   const [newChoreTitle, setNewChoreTitle] = useState('');
   const [newChoreDescription, setNewChoreDescription] = useState('');
+  const [newChoreMinPercent, setNewChoreMinPercent] = useState(5);
+  const [newChoreMaxPercent, setNewChoreMaxPercent] = useState(15);
 
   useEffect(() => {
     const today = todayISO();
@@ -355,6 +444,81 @@ function App() {
   const activeUserId = state?.activeUser ?? null;
   const activeStats = activeUserId ? state?.profiles[activeUserId] : null;
 
+  const settingsDirty = useMemo(() => {
+    if (!state) return false;
+    const sanitizedDraft = sanitizeSettings(settingsDraft);
+    return settingsChanged(sanitizedDraft, state.adminSettings);
+  }, [settingsDraft, state]);
+
+  const librariesEqual = (
+    a: readonly ChoreTemplate[],
+    b: readonly ChoreTemplate[],
+  ): boolean => {
+    if (a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index += 1) {
+      const left = a[index];
+      const right = b[index];
+      if (
+        left.id !== right.id ||
+        left.title !== right.title ||
+        left.description !== right.description ||
+        left.minPercent !== right.minPercent ||
+        left.maxPercent !== right.maxPercent
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const choresDirty = useMemo(() => {
+    if (!state) return false;
+    const sanitizedDraft = sanitizeChoreLibrary(choreDrafts);
+    return !librariesEqual(sanitizedDraft, state.choreLibrary);
+  }, [choreDrafts, state]);
+
+  const hasUnsavedAdminChanges = showAdmin && (settingsDirty || choresDirty);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedAdminChanges) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    if (hasUnsavedAdminChanges) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedAdminChanges]);
+
+  const handleToggleAdmin = () => {
+    if (showAdmin) {
+      if (hasUnsavedAdminChanges) {
+        const confirmLeave = window.confirm(
+          'You have unsaved admin changes. Save before leaving or confirm to discard.',
+        );
+        if (!confirmLeave) {
+          return;
+        }
+      }
+      setShowAdmin(false);
+    } else {
+      setShowAdmin(true);
+    }
+  };
+
+  const handleSelectUser = (userId: UserId) => {
+    setState((current) => {
+      if (!current) return current;
+      const synced = synchronizeRootState(current, todayISO());
+      return { ...synced, activeUser: userId };
+    });
+  };
+
   const applyAdminSettings = (nextSettings: AdminSettings) => {
     setState((current) => {
       if (!current) return current;
@@ -379,28 +543,15 @@ function App() {
     });
   };
 
-  const handleSettingsFieldChange = (
-    field: keyof AdminSettings,
-    value: number,
-  ) => {
-    const safeValue = Number.isNaN(value) ? 0 : value;
-    let normalized = Math.max(0, safeValue);
-    if (field === 'dailyChoresCount') {
-      normalized = Math.max(0, Math.floor(safeValue));
-    } else if (field === 'minChoreReward' || field === 'maxChoreReward') {
-      normalized = Math.max(0, Math.floor(safeValue));
-    }
+  const handleSettingsFieldChange = (field: keyof AdminSettings, value: number) => {
     setSettingsDraft((currentDraft) => {
-      const next: AdminSettings = { ...currentDraft, [field]: normalized };
-      if (field === 'minChoreReward' && normalized > currentDraft.maxChoreReward) {
-        next.maxChoreReward = normalized;
-      }
-      if (field === 'maxChoreReward' && normalized < currentDraft.minChoreReward) {
-        next.minChoreReward = normalized;
-      }
-      if (field === 'dailyChoresCount' && !Number.isFinite(normalized)) {
-        next.dailyChoresCount = 0;
-      }
+      const sanitizedValue = Number.isNaN(value) ? 0 : value;
+      const next: AdminSettings = {
+        ...currentDraft,
+        [field]: field === 'dailyChoresCount'
+          ? Math.max(0, Math.floor(sanitizedValue))
+          : Math.max(0, Math.floor(sanitizedValue)),
+      };
       return next;
     });
   };
@@ -417,11 +568,41 @@ function App() {
     );
   };
 
+  const handleChorePercentChange = (
+    id: string,
+    field: 'minPercent' | 'maxPercent',
+    value: number,
+  ) => {
+    setChoreDrafts((currentDrafts) =>
+      currentDrafts.map((chore) => {
+        if (chore.id !== id) return chore;
+        const numeric = Number.isNaN(value) ? 0 : value;
+        const safeValue = Math.min(100, Math.max(0, Math.round(numeric * 100) / 100));
+        if (field === 'minPercent') {
+          const updatedMin = safeValue;
+          return {
+            ...chore,
+            minPercent: updatedMin,
+            maxPercent: Math.max(updatedMin, chore.maxPercent),
+          };
+        }
+        const updatedMax = safeValue;
+        return {
+          ...chore,
+          maxPercent: updatedMax,
+          minPercent: Math.min(chore.minPercent, updatedMax),
+        };
+      }),
+    );
+  };
+
   const handleRemoveChore = (id: string) => {
     setChoreDrafts((currentDrafts) => currentDrafts.filter((chore) => chore.id !== id));
   };
 
   const handleResetChoreLibrary = () => {
+    const confirmReset = window.confirm('Reset the chore library to defaults?');
+    if (!confirmReset) return;
     const defaults = cloneChoreLibrary(DEFAULT_CHORE_LIBRARY);
     setChoreDrafts(defaults);
     applyChoreLibrary(defaults);
@@ -440,78 +621,40 @@ function App() {
     const title = newChoreTitle.trim();
     if (!title) return;
     const description = newChoreDescription.trim();
-
+    const minPercent = Math.min(100, Math.max(0, Number(newChoreMinPercent) || 0));
+    const maxPercent = Math.min(100, Math.max(minPercent, Number(newChoreMaxPercent) || minPercent));
     const baseId = slugify(title);
-    let candidate = baseId;
-    let suffix = 1;
-    const existingIds = new Set(choreDrafts.map((chore) => chore.id));
-    while (existingIds.has(candidate)) {
-      candidate = `${baseId}-${suffix}`;
-      suffix += 1;
-    }
+    const uniqueId = `${baseId}-${generateId()}`;
 
-    const newTemplate: ChoreTemplate = {
-      id: candidate,
+    const newChore: ChoreTemplate = {
+      id: uniqueId,
       title,
       description,
+      minPercent,
+      maxPercent,
     };
 
-    setChoreDrafts((currentDrafts) => [...currentDrafts, newTemplate]);
+    setChoreDrafts((current) => [...current, newChore]);
     setNewChoreTitle('');
     setNewChoreDescription('');
-  };
-
-  const handleToggleAdmin = () => {
-    setShowAdmin((currentValue) => !currentValue);
-  };
-
-  useEffect(() => {
-    setPopups([]);
-  }, [activeUserId]);
-
-  const availableBalance = useMemo(() => {
-    if (!activeStats) return 0;
-    return activeStats.totalEarned - activeStats.totalCashedOut;
-  }, [activeStats]);
-
-  const handleSelectUser = (userId: UserId) => {
-    setState((current) => {
-      const synced = synchronizeRootState(current, todayISO());
-      return { ...synced, activeUser: userId };
-    });
-  };
-
-  const handleReveal = (choreId: string) => {
-    setState((current) => {
-      if (!current) return current;
-      const cycle = {
-        ...current.cycle,
-        chores: current.cycle.chores.map((chore) =>
-          chore.id === choreId ? { ...chore, revealed: true } : chore,
-        ),
-      };
-
-      return {
-        ...current,
-        cycle,
-      };
-    });
+    setNewChoreMinPercent(5);
+    setNewChoreMaxPercent(15);
   };
 
   const handleComplete = (choreId: string) => {
     let newPopup: RewardPopup | null = null;
     setState((current) => {
       const actor = current?.activeUser;
-      if (!actor) return current;
-      const stats = current.profiles[actor];
-      const target = current.cycle.chores.find((chore) => chore.id === choreId);
+      if (!current || !actor) return current;
+      const plan = current.cycle.dailyPlans[current.cycle.dayIndex];
+      if (!plan) return current;
+      const target = plan.chores.find((chore) => chore.id === choreId);
       if (!target || target.completed) return current;
 
-      const updatedChores = current.cycle.chores.map((chore) =>
+      const updatedChores = plan.chores.map((chore) =>
         chore.id === choreId
           ? {
               ...chore,
-              revealed: true,
               completed: true,
               completedBy: actor,
               completionTimestamp: new Date().toISOString(),
@@ -530,11 +673,21 @@ function App() {
         profiles: {
           ...current.profiles,
           [actor]: {
-            ...stats,
-            totalEarned: stats.totalEarned + target.reward,
+            ...current.profiles[actor],
+            totalEarned: current.profiles[actor].totalEarned + target.reward,
           },
         },
-        cycle: { ...current.cycle, chores: updatedChores },
+        cycle: {
+          ...current.cycle,
+          dailyPlans: current.cycle.dailyPlans.map((planEntry, index) =>
+            index === current.cycle.dayIndex
+              ? {
+                  ...planEntry,
+                  chores: updatedChores,
+                }
+              : planEntry,
+          ),
+        },
       };
     });
 
@@ -542,9 +695,7 @@ function App() {
       const popup: RewardPopup = newPopup;
       setPopups((current) => [...current, popup]);
       window.setTimeout(() => {
-        setPopups((current) =>
-          current.filter((entry: RewardPopup) => entry.id !== popup.id),
-        );
+        setPopups((current) => current.filter((entry) => entry.id !== popup.id));
       }, 2200);
     }
   };
@@ -552,30 +703,30 @@ function App() {
   const handleCashOut = (amount: number) => {
     setState((current) => {
       const actor = current?.activeUser;
-      if (!actor) return current;
+      if (!current || !actor) return current;
       const stats = current.profiles[actor];
-      const available = stats.totalEarned - stats.totalCashedOut;
+      const available = Math.max(0, stats.totalEarned - stats.totalCashedOut);
       const value = Math.min(amount, available);
       if (value <= 0) return current;
-      const updatedStats: UserStats = {
-        ...stats,
-        totalCashedOut: stats.totalCashedOut + value,
-      };
-
       return {
         ...current,
         profiles: {
           ...current.profiles,
-          [actor]: updatedStats,
+          [actor]: {
+            ...stats,
+            totalCashedOut: stats.totalCashedOut + value,
+          },
         },
       };
     });
   };
 
-  const handleReset = () => {
+  const handleResetWallet = () => {
+    const confirmReset = window.confirm('Reset your earnings for this profile?');
+    if (!confirmReset) return;
     setState((current) => {
       const actor = current?.activeUser;
-      if (!actor) return current;
+      if (!current || !actor) return current;
       return {
         ...current,
         profiles: {
@@ -596,28 +747,9 @@ function App() {
   }
 
   if (showAdmin) {
-    const effectiveChoreCount = Math.min(
-      Math.max(0, Math.floor(settingsDraft.dailyChoresCount)),
-      choreDrafts.length,
-    );
-    const averagePerDay =
-      CYCLE_LENGTH_DAYS > 0
-        ? settingsDraft.baseRewardPool / CYCLE_LENGTH_DAYS
-        : 0;
-    const averagePerChore =
-      effectiveChoreCount > 0 ? averagePerDay / effectiveChoreCount : 0;
-    const minTotal =
-      effectiveChoreCount > 0
-        ? settingsDraft.minChoreReward * effectiveChoreCount * CYCLE_LENGTH_DAYS
-        : 0;
-    const maxTotal =
-      effectiveChoreCount > 0
-        ? settingsDraft.maxChoreReward * effectiveChoreCount * CYCLE_LENGTH_DAYS
-        : 0;
-    const poolWithinRange =
-      effectiveChoreCount === 0 ||
-      (settingsDraft.baseRewardPool >= minTotal &&
-        (maxTotal === 0 || settingsDraft.baseRewardPool <= maxTotal));
+    const sanitizedDraft = sanitizeChoreLibrary(choreDrafts);
+    const averageDailyBudget =
+      CYCLE_LENGTH_DAYS > 0 ? settingsDraft.baseRewardPool / CYCLE_LENGTH_DAYS : 0;
 
     return (
       <div className="app admin-app">
@@ -628,14 +760,17 @@ function App() {
               Back to quests
             </button>
           </div>
-          <p>Adjust reward pools and chore cards for every adventurer.</p>
+          <p>Update the shared chore deck and reward pool. Save changes before leaving.</p>
+          {(settingsDirty || choresDirty) && (
+            <p className="admin-warning">You have unsaved changes. Save to apply them.</p>
+          )}
         </header>
 
         <section className="admin-grid">
           <article className="admin-card">
-            <h2>Reward Configuration</h2>
+            <h2>Reward Pool</h2>
             <label className="admin-field">
-              Base reward pool (per cycle)
+              Base reward pool per cycle
               <input
                 type="number"
                 min={0}
@@ -652,7 +787,7 @@ function App() {
               />
             </label>
             <label className="admin-field">
-              Daily chores dealt
+              Chores per day
               <input
                 type="number"
                 min={0}
@@ -668,42 +803,6 @@ function App() {
                 }
               />
             </label>
-            <div className="admin-field admin-field--split">
-              <label>
-                Minimum reward per chore
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={settingsDraft.minChoreReward}
-                  onChange={(event) =>
-                    handleSettingsFieldChange(
-                      'minChoreReward',
-                      Number.isNaN(Number(event.target.value))
-                        ? 0
-                        : Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
-              <label>
-                Maximum reward per chore
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={settingsDraft.maxChoreReward}
-                  onChange={(event) =>
-                    handleSettingsFieldChange(
-                      'maxChoreReward',
-                      Number.isNaN(Number(event.target.value))
-                        ? 0
-                        : Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
-            </div>
             <button type="button" className="primary-button" onClick={handleSaveSettings}>
               Save reward settings
             </button>
@@ -712,34 +811,29 @@ function App() {
           <article className="admin-card admin-card--summary">
             <h2>Payout Forecast</h2>
             <p>
-              Cycle length: <strong>{CYCLE_LENGTH_DAYS}</strong> days
+              Average daily budget: <strong>{formatCash(averageDailyBudget)}</strong>
             </p>
-            <p>
-              Active chores per day:{' '}
-              <strong>{Math.min(settingsDraft.dailyChoresCount, choreDrafts.length)}</strong>
-            </p>
-            <p>
-              Average payout per day: <strong>{formatCash(averagePerDay)}</strong>
-            </p>
-            <p>
-              Average payout per chore: <strong>{formatCash(averagePerChore)}</strong>
-            </p>
-            <p>
-              Reward range per chore:{' '}
-              <strong>
-                {formatCash(settingsDraft.minChoreReward)} – {formatCash(settingsDraft.maxChoreReward)}
-              </strong>
-            </p>
-            {effectiveChoreCount === 0 ? (
-              <p className="admin-warning">No chores configured. Add at least one card to generate quests.</p>
-            ) : poolWithinRange ? (
-              <p className="admin-note">Base reward pool fits within the configured min/max totals.</p>
-            ) : (
-              <p className="admin-warning">
-                Base reward pool is outside the allowable total range of {formatCash(minTotal)} –{' '}
-                {formatCash(maxTotal)}. Adjust the pool or the per-chore bounds.
-              </p>
-            )}
+            <div className="admin-summary-table">
+              <div className="admin-summary-row admin-summary-row--header">
+                <span>Chore</span>
+                <span>Min</span>
+                <span>Max</span>
+                <span>Avg</span>
+              </div>
+              {sanitizedDraft.map((chore) => {
+                const minValue = (chore.minPercent / 100) * averageDailyBudget;
+                const maxValue = (chore.maxPercent / 100) * averageDailyBudget;
+                const avgValue = ((chore.minPercent + chore.maxPercent) / 200) * averageDailyBudget;
+                return (
+                  <div key={chore.id} className="admin-summary-row">
+                    <span>{chore.title}</span>
+                    <span>{formatCash(minValue)}</span>
+                    <span>{formatCash(maxValue)}</span>
+                    <span>{formatCash(avgValue)}</span>
+                  </div>
+                );
+              })}
+            </div>
           </article>
         </section>
 
@@ -747,7 +841,7 @@ function App() {
           <div className="section-heading">
             <h2>Chore Library</h2>
             <span className="section-note">
-              Edit existing quests, reset to defaults, or craft new chores for the daily deck.
+              Adjust each quest card and its reward range. Save changes before navigating away.
             </span>
           </div>
           <div className="admin-chores-list">
@@ -773,6 +867,42 @@ function App() {
                       }
                     />
                   </label>
+                  <div className="admin-percent-grid">
+                    <label>
+                      Min % of pool
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={chore.minPercent}
+                        onChange={(event) =>
+                          handleChorePercentChange(
+                            chore.id,
+                            'minPercent',
+                            Number(event.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      Max % of pool
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={chore.maxPercent}
+                        onChange={(event) =>
+                          handleChorePercentChange(
+                            chore.id,
+                            'maxPercent',
+                            Number(event.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -815,6 +945,28 @@ function App() {
                   placeholder="Describe the quest objective"
                 />
               </label>
+              <label>
+                Min %
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={newChoreMinPercent}
+                  onChange={(event) => setNewChoreMinPercent(Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                Max %
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={newChoreMaxPercent}
+                  onChange={(event) => setNewChoreMaxPercent(Number(event.target.value) || 0)}
+                />
+              </label>
             </div>
             <button type="submit" className="primary-button" disabled={!newChoreTitle.trim()}>
               Add chore
@@ -835,12 +987,12 @@ function App() {
               Admin tools
             </button>
           </div>
-          <p>Select your adventurer to begin claiming chore cash.</p>
+          <p>Select your adventurer to check in on today&apos;s quests.</p>
         </header>
         <section className="login-panel">
           <h2>Choose your player</h2>
           <p className="section-note">
-            Everyone shares the same quest deck—log in to claim chores under your name and track your cash.
+            Everyone sees the same quest deck. Pick your profile to log completions and cash out.
           </p>
           <div className="login-grid">
             {USERS.map((user) => (
@@ -860,18 +1012,11 @@ function App() {
   }
 
   const cycle = state.cycle;
-  const cycleDay = cycle.dayIndex + 1;
-  const daysRemaining = Math.max(cycle.cycleLength - cycleDay, 0);
-  const dayBudget = cycle.dailyBudgets[cycle.dayIndex] ?? 0;
-  const dayClaimed = cycle.chores
-    .filter((chore) => chore.completed)
-    .reduce((sum, chore) => sum + chore.reward, 0);
-  const dayUnclaimed = Math.max(dayBudget - dayClaimed, 0);
-  const currentUnclaimed = cycle.chores
-    .filter((chore) => !chore.completed)
-    .reduce((sum, chore) => sum + chore.reward, 0);
-  const carryForward =
-    cycle.carryOverFromPreviousCycle + cycle.unclaimedThisCycle;
+  const currentPlan = cycle.dailyPlans[cycle.dayIndex];
+  const availableBalance = Math.max(
+    0,
+    activeStats.totalEarned - activeStats.totalCashedOut,
+  );
 
   return (
     <div className="app">
@@ -901,122 +1046,83 @@ function App() {
             </div>
           </div>
         </div>
-        <p>
-          Draw daily chore quests, flip the cards to reveal their hidden cash
-          rewards, and withdraw your hard-earned earnings.
-        </p>
+        <p>Complete today&apos;s quests to reveal your cash rewards. Unclaimed cash rolls into tomorrow.</p>
       </header>
 
-      <section className="dashboard">
-        <div className="stat-card">
-          <h2>Cycle Progress</h2>
-          <p className="stat-primary">Day {cycleDay} of {cycle.cycleLength}</p>
-          <div className="progress-bar">
-            <div
-              className="progress-bar__fill"
-              style={{ width: `${(cycleDay / cycle.cycleLength) * 100}%` }}
-            />
-          </div>
-          <p className="stat-subtle">{daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining in this cycle</p>
+      <section className="wallet">
+        <div className="wallet-card">
+          <h2>Total earned</h2>
+          <p className="wallet-amount">{formatCash(activeStats.totalEarned)}</p>
         </div>
-
-        <div className="stat-card">
-          <h2>Reward Pool</h2>
-          <p className="stat-primary">{formatCash(cycle.rewardPool)}</p>
-          <p className="stat-subtle">Carry-in: {formatCash(cycle.carryOverFromPreviousCycle)}</p>
-          <p className="stat-subtle">Banked rollover: {formatCash(carryForward)}</p>
-          <p className="stat-subtle">Projected next cycle: {formatCash(carryForward + currentUnclaimed)}</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>Today's Budget</h2>
-          <p className="stat-primary">{formatCash(dayBudget)}</p>
-          <p className="stat-subtle">Claimed: {formatCash(dayClaimed)}</p>
-          <p className="stat-subtle">Hidden: {formatCash(dayUnclaimed)}</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>Your Wallet</h2>
-          <p className="stat-primary">Earned: {formatCash(activeStats.totalEarned)}</p>
-          <p className="stat-subtle">Withdrawn: {formatCash(activeStats.totalCashedOut)}</p>
-          <p className="stat-subtle">Available: {formatCash(availableBalance)}</p>
+        <div className="wallet-card">
+          <h2>Available to cash out</h2>
+          <p className="wallet-amount">{formatCash(availableBalance)}</p>
           <button
             type="button"
-            className="ghost-button"
+            className="primary-button"
             onClick={() => handleCashOut(availableBalance)}
             disabled={availableBalance <= 0}
           >
-            Withdraw all cash
+            Cash out all
+          </button>
+          <button type="button" className="ghost-button" onClick={handleResetWallet}>
+            Reset wallet
           </button>
         </div>
       </section>
 
       <section className="chores">
         <div className="section-heading">
-          <h2>Daily Quest Deck</h2>
-          <span className="section-note">Flip a card to reveal its reward, then mark it complete to claim the cash!</span>
+          <h2>Today&apos;s quest board</h2>
+          {currentPlan && (
+            <span className="section-note">
+              Scheduled for {currentPlan.date}. Completed cards show their reward and hero.
+            </span>
+          )}
         </div>
         <div className="chore-grid">
-          {cycle.chores.map((chore) => {
-            const cardClasses = [
-              'chore-card',
-              chore.revealed ? 'chore-card--revealed' : '',
-              chore.completed ? 'chore-card--completed' : '',
-            ]
+          {currentPlan?.chores.map((chore) => {
+            const cardClasses = ['chore-card', chore.completed ? 'chore-card--completed' : '']
               .filter(Boolean)
               .join(' ');
-
+            const completedByLabel = chore.completedBy
+              ? USER_NAMES[chore.completedBy] ?? 'Unknown hero'
+              : null;
             return (
               <article key={chore.id} className={cardClasses}>
-                <div className="chore-card__inner">
-                  <div className="chore-card__face chore-card__face--front">
-                    <span className="quest-label">Quest</span>
-                    <h3>{chore.template.title}</h3>
-                    <p>Tap to draw your reward</p>
-                    <button
-                      type="button"
-                      onClick={() => handleReveal(chore.id)}
-                      disabled={chore.completed}
-                    >
-                      {chore.completed ? 'Completed' : 'Draw'}
-                    </button>
-                    {chore.completed && chore.completedBy && (
-                      <span className="chore-status">
-                        Claimed by {USER_NAMES[chore.completedBy] ?? 'another hero'}
-                      </span>
+                <div className="chore-card__content">
+                  <span className="quest-label">Quest</span>
+                  <h3>{chore.template.title}</h3>
+                  <p className="chore-description">{chore.template.description}</p>
+                  <p className="reward-placeholder">
+                    {chore.completed ? (
+                      <>
+                        Reward earned: <strong>{formatCash(chore.reward)}</strong>
+                      </>
+                    ) : (
+                      'Reward hidden until completed'
                     )}
-                  </div>
-                  <div className="chore-card__face chore-card__face--back">
-                    <span className="quest-label">Reward Revealed</span>
-                    <h3>{chore.template.title}</h3>
-                    <p className="reward-amount">{formatCash(chore.reward)}</p>
-                    <p className="chore-description">{chore.template.description}</p>
-                    <button
-                      type="button"
-                      onClick={() => handleComplete(chore.id)}
-                      disabled={chore.completed}
-                    >
-                      {chore.completed ? 'Claimed' : 'Complete quest'}
-                    </button>
-                    {chore.completed && chore.completedBy && (
-                      <p className="chore-status">
-                        Claimed by {USER_NAMES[chore.completedBy] ?? 'another hero'}
-                      </p>
-                    )}
-                  </div>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleComplete(chore.id)}
+                    disabled={chore.completed}
+                    className="primary-button"
+                  >
+                    {chore.completed ? 'Quest claimed' : 'Mark complete'}
+                  </button>
+                  {chore.completed && completedByLabel && (
+                    <p className="chore-status">Claimed by {completedByLabel}</p>
+                  )}
                 </div>
               </article>
             );
           })}
+          {!currentPlan && (
+            <p className="empty-state">No quests scheduled for today. Check back tomorrow!</p>
+          )}
         </div>
       </section>
-
-      <footer className="footer">
-        <button type="button" className="ghost-button" onClick={handleReset}>
-          Reset your wallet
-        </button>
-        <span>Next cycle starts {addDays(cycle.startDate, cycle.cycleLength)}.</span>
-      </footer>
 
       <div className="popup-layer">
         {popups.map((popup) => (

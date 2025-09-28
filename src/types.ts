@@ -3,8 +3,6 @@ import type { ChoreTemplate } from './data/choreLibrary';
 export type AdminSettings = {
   baseRewardPool: number;
   dailyChoresCount: number;
-  minChoreReward: number;
-  maxChoreReward: number;
 };
 
 export type UserId = 'fransisco' | 'lewis' | 'jero' | 'saffire';
@@ -13,10 +11,16 @@ export type QuestChore = {
   id: string;
   template: ChoreTemplate;
   reward: number;
-  revealed: boolean;
   completed: boolean;
   completedBy?: UserId;
   completionTimestamp?: string;
+};
+
+export type DailyChorePlan = {
+  date: string; // ISO date for the scheduled day
+  budget: number;
+  unallocated: number;
+  chores: QuestChore[];
 };
 
 export type CycleState = {
@@ -26,10 +30,10 @@ export type CycleState = {
   cycleLength: number;
   rewardPool: number;
   carryOverFromPreviousCycle: number;
-  unclaimedThisCycle: number;
   dailyBudgets: number[];
-  chores: QuestChore[];
+  dailyPlans: DailyChorePlan[];
   config: AdminSettings;
+  librarySignature: string;
 };
 
 export type UserStats = {

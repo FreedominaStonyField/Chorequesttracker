@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Chore, Completion, CycleConfig, Payout, User } from '../lib/models';
+import { Chore, Completion, CycleConfig, CycleState, Payout, User } from '../lib/models';
 import { planDailyAllocation } from '../lib/simulate';
 import { cycleDayLabel } from '../lib/dates';
 
@@ -11,6 +11,7 @@ type Props = {
   completions: Completion[];
   payouts: Payout[];
   config: CycleConfig;
+  currentCycle: CycleState | null;
   onAddCompletion: (userId: string, choreId: string, dateISO: string) => void;
   onRemoveCompletion: (id: string) => void;
   onAllocate: (dateISO: string) => void;
@@ -24,6 +25,7 @@ export default function DayView({
   completions,
   payouts,
   config,
+  currentCycle,
   onAddCompletion,
   onRemoveCompletion,
   onAllocate,
@@ -32,8 +34,21 @@ export default function DayView({
   const dayPayouts = payouts.filter((p) => p.dateISO === dateISO);
 
   const plan = useMemo(
-    () => planDailyAllocation({ users, chores, completions, payouts, config }, dateISO),
-    [users, chores, completions, payouts, config, dateISO]
+    () =>
+      planDailyAllocation(
+        {
+          users,
+          chores,
+          completions,
+          payouts,
+          config,
+          currentCycle,
+          dailyChores: [],
+          dailyRollovers: [],
+        },
+        dateISO
+      ),
+    [users, chores, completions, payouts, config, currentCycle, dateISO]
   );
 
   const choreMap = new Map(chores.map((c) => [c.id, c]));

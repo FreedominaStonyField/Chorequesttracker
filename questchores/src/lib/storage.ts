@@ -9,6 +9,9 @@ const defaultState: AppState = {
   chores: [],
   completions: [],
   payouts: [],
+  currentCycle: null,
+  dailyChores: [],
+  dailyRollovers: [],
   config: {
     cycleDays: 28,
     cashPoolTotal: 400,

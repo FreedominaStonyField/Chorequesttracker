@@ -10,6 +10,8 @@ import { AppState, Chore, Completion, CycleConfig, User } from './lib/models';
 import { todayISO, dayIndex, withinCycle, cycleDayLabel } from './lib/dates';
 import { allocateForDate } from './lib/allocation';
 import { planDailyAllocation } from './lib/simulate';
+import TodayChoreList from './components/TodayChoreList';
+import { completeDailyChore, generateCycle, rolloverUnearned } from './lib/cycles';
 
 const id = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
@@ -31,14 +33,25 @@ export default function App() {
     setSelectedDate((prev) => prev || state.config.startDateISO || todayISO());
   }, [state.config.startDateISO]);
 
+  useEffect(() => {
+    if (!state.currentCycle) {
+      setState((prev) => {
+        if (prev.currentCycle) return prev;
+        const generated = generateCycle(prev);
+        return { ...prev, ...generated };
+      });
+    }
+  }, [state.currentCycle, setState]);
+
   const updateConfig = (config: CycleConfig) => {
     setState((prev) => ({ ...prev, config }));
   };
 
   const remainingPool = useMemo(() => {
     const paid = state.payouts.filter((p) => withinCycle(p.dateISO, state.config)).reduce((sum, p) => sum + p.amount, 0);
-    return Math.max(0, state.config.cashPoolTotal - paid);
-  }, [state.payouts, state.config]);
+    const funding = state.currentCycle?.fundingPool ?? state.config.cashPoolTotal;
+    return Math.max(0, funding - paid);
+  }, [state.payouts, state.config, state.currentCycle]);
 
   const cycleStatus = cycleDayLabel(selectedDate, state.config);
 
@@ -122,18 +135,49 @@ export default function App() {
 
   const resetCycle = () => {
     const freshUsers = state.users.map((u) => ({ ...u, totalEarned: 0, totalCashedOut: 0 }));
-    setState((prev) => ({
-      ...defaultState,
-      users: freshUsers,
-      chores: prev.chores,
-      config: { ...prev.config, startDateISO: todayISO() },
-    } as AppState));
+    setState((prev) => {
+      const nextConfig = { ...prev.config, startDateISO: todayISO() };
+      const base: AppState = {
+        ...prev,
+        users: freshUsers,
+        config: nextConfig,
+        completions: [],
+        payouts: [],
+        dailyChores: [],
+        dailyRollovers: prev.dailyRollovers,
+      } as AppState;
+      const generated = generateCycle(base, nextConfig, nextConfig.startDateISO);
+      return { ...base, ...generated };
+    });
     setSelectedDate(todayISO());
+  };
+
+  const completeTodayChore = (dailyChoreId: string) => {
+    setState((prev) => ({
+      ...prev,
+      dailyChores: completeDailyChore(prev.dailyChores, dailyChoreId, new Date()),
+    }));
+  };
+
+  const recordRollover = (dateISO: string) => {
+    setState((prev) => {
+      if (!prev.currentCycle) return prev;
+      const result = rolloverUnearned(prev.currentCycle, prev.dailyChores, prev.dailyRollovers, dateISO, new Date());
+      if (result.rollovers === prev.dailyRollovers) return prev;
+      return { ...prev, currentCycle: result.cycle, dailyRollovers: result.rollovers };
+    });
   };
 
   const importState = (next: AppState) => {
     if (!next || typeof next !== 'object') return;
-    setState({ ...defaultState, ...next, config: { ...defaultState.config, ...next.config } });
+    setState({
+      ...defaultState,
+      ...next,
+      config: { ...defaultState.config, ...next.config },
+      currentCycle: next.currentCycle ?? null,
+      dailyChores: next.dailyChores ?? [],
+      dailyRollovers: next.dailyRollovers ?? [],
+    });
   };
 
   const plan = planDailyAllocation(state, selectedDate);
@@ -145,10 +189,12 @@ export default function App() {
             <h1 className="text-2xl font-bold tracking-tight">QuestChores</h1>
             <p className="text-sm text-slate-300">{cycleStatus}</p>
           </div>
-          <div className="text-sm text-slate-300">
+          <div className="text-sm text-slate-300 text-right">
             Remaining Pool: <span className="text-amber-300">${remainingPool.toFixed(2)}</span>
             <br />
             Today's plan: ${plan.totalFinal.toFixed(2)} across {plan.entries.length} quests
+            <br />
+            Rollover pool: <span className="text-sky-300">${(state.currentCycle?.rolloverPool ?? 0).toFixed(2)}</span>
           </div>
         </div>
       </header>
@@ -180,9 +226,19 @@ export default function App() {
           completions={state.completions}
           payouts={state.payouts}
           config={state.config}
+          currentCycle={state.currentCycle}
           onAddCompletion={addCompletion}
           onRemoveCompletion={removeCompletion}
           onAllocate={allocate}
+        />
+        <TodayChoreList
+          dateISO={selectedDate}
+          baseChores={state.chores}
+          dailyChores={state.dailyChores}
+          currentCycle={state.currentCycle}
+          rollovers={state.dailyRollovers}
+          onComplete={completeTodayChore}
+          onRecordRollover={recordRollover}
         />
         <ImportExport state={state} onImport={importState} />
       </main>

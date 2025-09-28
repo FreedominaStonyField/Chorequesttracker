@@ -6,6 +6,13 @@ export function toDateOnlyISO(date: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
 export function dayIndex(dateISO: string, config: CycleConfig): number {
   const start = new Date(config.startDateISO);
   const target = new Date(dateISO);

@@ -122,6 +122,25 @@ type AllocationResult = {
   unallocated: number;
 };
 
+type PoolDiagnostics = {
+  iterations: number;
+  timestamp: string;
+  cycleLength: number;
+  rewardPool: number;
+  carryOver: number;
+  budgets: { min: number; max: number; average: number }[];
+  unallocated: { min: number; max: number; average: number };
+  chores: Array<{
+    id: string;
+    title: string;
+    minPercent: number;
+    maxPercent: number;
+    minReward: number;
+    maxReward: number;
+    averageReward: number;
+  }>;
+};
+
 type RewardPopup = {
   id: string;
   amount: number;
@@ -359,6 +378,87 @@ function synchronizeCycleState(
   };
 }
 
+function runPoolDiagnostics(
+  iterations: number,
+  library: readonly ChoreTemplate[],
+  settings: AdminSettings,
+  carryOver: number,
+  cycleLength: number,
+): PoolDiagnostics {
+  const safeIterations = Math.max(1, Math.min(iterations, 500));
+  const rewardPool = settings.baseRewardPool + Math.max(0, carryOver);
+  const templateIndex = new Map(library.map((template, index) => [template.id, index]));
+
+  const budgetStats = Array.from({ length: Math.max(1, cycleLength) }, () => ({
+    min: Number.POSITIVE_INFINITY,
+    max: 0,
+    total: 0,
+  }));
+
+  const unallocatedStats = { min: Number.POSITIVE_INFINITY, max: 0, total: 0 };
+
+  const choreStats = library.map((template) => ({
+    template,
+    min: Number.POSITIVE_INFINITY,
+    max: 0,
+    total: 0,
+  }));
+
+  for (let run = 0; run < safeIterations; run += 1) {
+    const budgets = randomIntPartition(rewardPool, budgetStats.length, 0);
+    budgets.forEach((budget, dayIndex) => {
+      const bucket = budgetStats[dayIndex];
+      bucket.min = Math.min(bucket.min, budget);
+      bucket.max = Math.max(bucket.max, budget);
+      bucket.total += budget;
+
+      const plan = generateDailyPlan(`diagnostic-${dayIndex}`, budget, library);
+      unallocatedStats.min = Math.min(unallocatedStats.min, plan.unallocated);
+      unallocatedStats.max = Math.max(unallocatedStats.max, plan.unallocated);
+      unallocatedStats.total += plan.unallocated;
+
+      plan.chores.forEach((chore) => {
+        const index = templateIndex.get(chore.template.id);
+        if (index === undefined) return;
+        const stats = choreStats[index];
+        stats.min = Math.min(stats.min, chore.reward);
+        stats.max = Math.max(stats.max, chore.reward);
+        stats.total += chore.reward;
+      });
+    });
+  }
+
+  const sanitizeValue = (value: number) =>
+    value === Number.POSITIVE_INFINITY ? 0 : Math.max(0, Math.floor(value));
+
+  return {
+    iterations: safeIterations,
+    timestamp: new Date().toISOString(),
+    cycleLength: budgetStats.length,
+    rewardPool,
+    carryOver: Math.max(0, carryOver),
+    budgets: budgetStats.map((bucket) => ({
+      min: sanitizeValue(bucket.min),
+      max: Math.max(0, bucket.max),
+      average: bucket.total / safeIterations,
+    })),
+    unallocated: {
+      min: sanitizeValue(unallocatedStats.min),
+      max: Math.max(0, unallocatedStats.max),
+      average: unallocatedStats.total / safeIterations,
+    },
+    chores: choreStats.map((entry) => ({
+      id: entry.template.id,
+      title: entry.template.title,
+      minPercent: entry.template.minPercent,
+      maxPercent: entry.template.maxPercent,
+      minReward: sanitizeValue(entry.min),
+      maxReward: Math.max(0, entry.max),
+      averageReward: entry.total / safeIterations,
+    })),
+  };
+}
+
 function synchronizeRootState(base: RootState | null, today: string): RootState {
   const adminSettings = sanitizeSettings(base?.adminSettings ?? null);
   const choreLibrary = cloneChoreLibrary(
@@ -417,6 +517,8 @@ function App() {
   const [newChoreDescription, setNewChoreDescription] = useState('');
   const [newChoreMinPercent, setNewChoreMinPercent] = useState(5);
   const [newChoreMaxPercent, setNewChoreMaxPercent] = useState(15);
+  const [diagnosticIterations, setDiagnosticIterations] = useState(25);
+  const [diagnostics, setDiagnostics] = useState<PoolDiagnostics | null>(null);
 
   useEffect(() => {
     const today = todayISO();
@@ -491,6 +593,7 @@ function App() {
   }, [choreDrafts, state]);
 
   const hasUnsavedAdminChanges = showAdmin && (settingsDirty || choresDirty);
+  const adminActionsDisabled = !state;
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -507,6 +610,12 @@ function App() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [hasUnsavedAdminChanges]);
+
+  useEffect(() => {
+    if (!showAdmin) return;
+    if (!settingsDirty && !choresDirty) return;
+    setDiagnostics(null);
+  }, [choresDirty, settingsDirty, showAdmin]);
 
   const handleToggleAdmin = () => {
     if (showAdmin) {
@@ -625,6 +734,90 @@ function App() {
 
   const handleSaveSettings = () => {
     applyAdminSettings(settingsDraft);
+  };
+
+  const handleRegenerateToday = () => {
+    if (!state) return;
+    const confirmReset = window.confirm(
+      "Regenerate today's quest deck with carry-over rewards? This will reshuffle all rewards.",
+    );
+    if (!confirmReset) return;
+    setState((current) => {
+      if (!current) return current;
+      const today = todayISO();
+      const carryOver = computeCarryOver(current.cycle);
+      const nextCycle = createCycle(
+        today,
+        carryOver,
+        current.choreLibrary,
+        current.adminSettings,
+      );
+      return { ...current, cycle: nextCycle };
+    });
+  };
+
+  const handleForceFreshCycle = () => {
+    if (!state) return;
+    const confirmReset = window.confirm(
+      'Start a fresh cycle with a clean reward pool? All unclaimed rewards will be cleared.',
+    );
+    if (!confirmReset) return;
+    setState((current) => {
+      if (!current) return current;
+      const today = todayISO();
+      const nextCycle = createCycle(today, 0, current.choreLibrary, current.adminSettings);
+      return { ...current, cycle: nextCycle };
+    });
+  };
+
+  const handleResetCompletions = () => {
+    if (!state) return;
+    const confirmReset = window.confirm(
+      'Mark every quest for today as incomplete and remove claim history? This will not change rewards.',
+    );
+    if (!confirmReset) return;
+    setState((current) => {
+      if (!current) return current;
+      const { cycle } = current;
+      const nextPlans = cycle.dailyPlans.map((plan, index) => {
+        if (index !== cycle.dayIndex) return plan;
+        return {
+          ...plan,
+          chores: plan.chores.map((chore) => ({
+            ...chore,
+            completed: false,
+            completedBy: undefined,
+            completionTimestamp: undefined,
+          })),
+        };
+      });
+      return {
+        ...current,
+        cycle: {
+          ...cycle,
+          dailyPlans: nextPlans,
+        },
+      };
+    });
+  };
+
+  const handleRunDiagnostics = () => {
+    if (!state) return;
+    const sanitizedSettings = sanitizeSettings(settingsDraft);
+    const sanitizedLibrary = sanitizeChoreLibrary(choreDrafts);
+    const carryOver = computeCarryOver(state.cycle);
+    const result = runPoolDiagnostics(
+      diagnosticIterations,
+      sanitizedLibrary,
+      sanitizedSettings,
+      carryOver,
+      state.cycle.cycleLength,
+    );
+    setDiagnostics(result);
+  };
+
+  const handleClearDiagnostics = () => {
+    setDiagnostics(null);
   };
 
   const handleCreateChore = (event: FormEvent<HTMLFormElement>) => {
@@ -830,6 +1023,109 @@ function App() {
                 );
               })}
             </div>
+          </article>
+
+          <article className="admin-card admin-card--debug">
+            <h2>Testing &amp; Debug Tools</h2>
+            <p className="section-note">
+              Use these utilities to verify reward pooling and regenerate the current quest cycle.
+            </p>
+            {settingsDirty || choresDirty ? (
+              <p className="admin-warning">
+                Save pending changes to apply them to the live quest deck. Simulations use your draft values.
+              </p>
+            ) : null}
+            <div className="admin-actions admin-actions--stacked">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleRegenerateToday}
+                disabled={adminActionsDisabled}
+              >
+                Regenerate today&apos;s quests
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleResetCompletions}
+                disabled={adminActionsDisabled}
+              >
+                Reset completion status
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleForceFreshCycle}
+                disabled={adminActionsDisabled}
+              >
+                Start fresh cycle
+              </button>
+            </div>
+            <div className="admin-debug-controls">
+              <label>
+                Simulation runs
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={diagnosticIterations}
+                  onChange={(event) =>
+                    setDiagnosticIterations(() => {
+                      const value = Number(event.target.value);
+                      if (Number.isNaN(value)) return 1;
+                      return Math.max(1, Math.min(500, Math.floor(value)));
+                    })
+                  }
+                  disabled={adminActionsDisabled}
+                />
+              </label>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleRunDiagnostics}
+                disabled={adminActionsDisabled}
+              >
+                Run pool simulation
+              </button>
+            </div>
+            {diagnostics ? (
+              <div className="admin-debug-results">
+                <div className="admin-debug-results__header">
+                  <div>
+                    <p className="admin-debug-results__title">
+                      {diagnostics.iterations} simulations @ {formatCash(diagnostics.rewardPool)} pool
+                    </p>
+                    <p className="admin-debug-results__meta">
+                      Carry-over included: {formatCash(diagnostics.carryOver)} · Cycle length{' '}
+                      {diagnostics.cycleLength} day{diagnostics.cycleLength === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <button type="button" className="ghost-button" onClick={handleClearDiagnostics}>
+                    Clear report
+                  </button>
+                </div>
+                <div className="admin-debug-table">
+                  <div className="admin-debug-row admin-debug-row--header">
+                    <span>Chore</span>
+                    <span>Min roll</span>
+                    <span>Avg roll</span>
+                    <span>Max roll</span>
+                  </div>
+                  {diagnostics.chores.map((entry) => (
+                    <div key={entry.id} className="admin-debug-row">
+                      <span>{entry.title}</span>
+                      <span>{formatCash(entry.minReward)}</span>
+                      <span>{formatCash(entry.averageReward)}</span>
+                      <span>{formatCash(entry.maxReward)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="admin-debug-footnote">
+                  Unallocated budget range: {formatCash(diagnostics.unallocated.min)} –{' '}
+                  {formatCash(diagnostics.unallocated.max)} (avg {formatCash(diagnostics.unallocated.average)})
+                </p>
+              </div>
+            ) : null}
           </article>
         </section>
 

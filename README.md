@@ -11,6 +11,7 @@ ChoreQuest Tracker is a gamified daily chore web app inspired by gacha-style que
 - **Progress tracking** – Track total cash earned, withdrawn, and rollover balances.
 - **Animated rewards** – Claiming a chore triggers a celebratory pop-up so you feel the win.
 - **Local persistence** – Progress is saved in `localStorage` so the deck is waiting when you return.
+- **Admin debug tools** – Run reward pool simulations and regenerate the daily deck to validate payouts.
 
 ## Getting Started
 
@@ -36,5 +37,18 @@ The build output is written to `dist/` and can be served by any static file host
 - `src/data/choreLibrary.ts` – Pool of quest card templates.
 - `src/types.ts` – Shared TypeScript types for cycles and chores.
 - `src/utils/` – Helper functions for randomization, date math, and persistence.
+
+## Admin Testing Toolkit
+
+Open the **Admin Control Center** from the quest board to adjust chore templates and the reward pool. The new testing tools help
+you verify pooling logic before pushing changes live:
+
+- **Regenerate today's quests** to reshuffle rewards while keeping any carry-over budget intact.
+- **Reset completion status** to clear claimed quests for the day without changing their rewards.
+- **Start fresh cycle** to build a brand-new cycle that ignores previous carry-over.
+- **Run pool simulation** to execute up to 500 randomized allocations using the current (or drafted) settings and review the
+  minimum, average, and maximum rolls for each chore plus the leftover budget range.
+
+Save any pending changes before running diagnostics to ensure the simulation matches the configuration you expect.
 
 Feel free to expand the chore library, tweak reward pools, or drop in real authentication to turn this prototype into your own productivity game.

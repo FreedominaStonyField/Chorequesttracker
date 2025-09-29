@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-The development server runs on [http://localhost:5173](http://localhost:5173) by default. Use `npm run dev -- --host 0.0.0.0 --port 4173` when running inside the CaaS environment.
+The development server now binds to `0.0.0.0`, so you can open it from other devices on your local network using your machine's IP address on port `5173` (e.g., `http://192.168.1.10:5173`).
 
 ## Production Build
 

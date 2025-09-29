@@ -302,13 +302,29 @@ function createCycle(
 
 function computeCarryOver(cycle: CycleState): number {
   const plans = Array.isArray(cycle.dailyPlans) ? cycle.dailyPlans : [];
-  return plans.reduce((sum, plan) => {
-    const chores = Array.isArray(plan.chores) ? plan.chores : [];
-    const incompleteRewards = chores
-      .filter((chore) => !chore.completed)
-      .reduce((acc, chore) => acc + chore.reward, 0);
-    return sum + incompleteRewards + (plan.unallocated ?? 0);
-  }, cycle.carryOverFromPreviousCycle ?? 0);
+
+  if (plans.length === 0) {
+    return Math.max(0, cycle.carryOverFromPreviousCycle ?? 0);
+  }
+
+  const index = Math.min(Math.max(0, cycle.dayIndex ?? 0), plans.length - 1);
+  const plan = plans[index];
+
+  if (!plan) {
+    return Math.max(0, cycle.carryOverFromPreviousCycle ?? 0);
+  }
+
+  const chores = Array.isArray(plan.chores) ? plan.chores : [];
+  const incompleteRewards = chores.reduce((sum, chore) => {
+    if (chore?.completed) {
+      return sum;
+    }
+    return sum + Math.max(0, chore?.reward ?? 0);
+  }, 0);
+
+  const unallocated = Math.max(0, plan.unallocated ?? 0);
+
+  return incompleteRewards + unallocated;
 }
 
 function settingsChanged(a: AdminSettings, b: AdminSettings): boolean {

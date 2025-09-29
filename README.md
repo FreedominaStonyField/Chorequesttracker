@@ -51,4 +51,13 @@ you verify pooling logic before pushing changes live:
 
 Save any pending changes before running diagnostics to ensure the simulation matches the configuration you expect.
 
+### Regression Check: Admin Regeneration
+
+To confirm the reward pool stays bounded after repeated regenerations:
+
+1. Open the Admin Control Center and note the configured reward pool value.
+2. Without completing any chores, click **Regenerate today's quests** at least five times.
+3. Flip a chore card after each regeneration and confirm the revealed reward never exceeds the configured pool.
+4. Optionally complete a chore, regenerate again, and verify the remaining rewards match the leftover budget instead of gaining an extra base pool.
+
 Feel free to expand the chore library, tweak reward pools, or drop in real authentication to turn this prototype into your own productivity game.

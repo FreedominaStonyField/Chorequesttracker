@@ -761,13 +761,22 @@ function App() {
     setState((current) => {
       if (!current) return current;
       const today = todayISO();
-      const carryOver = computeCarryOver(current.cycle);
-      const nextCycle = createCycle(
+      const leftoverBudget = computeCarryOver(current.cycle);
+      const basePool = current.adminSettings.baseRewardPool;
+      const carryOverForRegeneration = leftoverBudget - basePool;
+      const regeneratedCycle = createCycle(
         today,
-        carryOver,
+        carryOverForRegeneration,
         current.choreLibrary,
         current.adminSettings,
       );
+      const nextCycle =
+        carryOverForRegeneration >= 0
+          ? regeneratedCycle
+          : {
+              ...regeneratedCycle,
+              carryOverFromPreviousCycle: 0,
+            };
       return { ...current, cycle: nextCycle };
     });
   };

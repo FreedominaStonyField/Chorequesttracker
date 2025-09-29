@@ -770,6 +770,34 @@ function App() {
     });
   };
 
+  const handleResetAllData = () => {
+    if (!state) return;
+    const confirmReset = window.confirm(
+      'Reset every profile, wallet balance, and quest history? This will clear all progress.',
+    );
+    if (!confirmReset) return;
+    const today = todayISO();
+    setState((current) => {
+      if (!current) return current;
+      const adminSettings = cloneSettings(current.adminSettings);
+      const choreLibrary = cloneChoreLibrary(current.choreLibrary);
+      const emptyProfiles = USERS.reduce<Record<UserId, UserStats>>((acc, user) => {
+        acc[user.id] = { totalEarned: 0, totalCashedOut: 0 };
+        return acc;
+      }, {} as Record<UserId, UserStats>);
+      const nextCycle = createCycle(today, 0, choreLibrary, adminSettings);
+      return {
+        activeUser: current.activeUser,
+        profiles: emptyProfiles,
+        cycle: nextCycle,
+        choreLibrary,
+        adminSettings,
+      };
+    });
+    setPopups([]);
+    setDiagnostics(null);
+  };
+
   const handleResetCompletions = () => {
     if (!state) return;
     const confirmReset = window.confirm(
@@ -1036,6 +1064,14 @@ function App() {
               </p>
             ) : null}
             <div className="admin-actions admin-actions--stacked">
+              <button
+                type="button"
+                className="ghost-button ghost-button--danger"
+                onClick={handleResetAllData}
+                disabled={adminActionsDisabled}
+              >
+                Reset all data
+              </button>
               <button
                 type="button"
                 className="ghost-button"

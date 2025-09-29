@@ -60,4 +60,20 @@ To confirm the reward pool stays bounded after repeated regenerations:
 3. Flip a chore card after each regeneration and confirm the revealed reward never exceeds the configured pool.
 4. Optionally complete a chore, regenerate again, and verify the remaining rewards match the leftover budget instead of gaining an extra base pool.
 
+### Regression Check: Admin Draft Persistence
+
+Ensure unsaved admin edits survive background synchronization:
+
+1. Open the Admin Control Center and change both the reward pool and at least one chore percentage without saving.
+2. Wait five minutes or switch to a different browser tab and return so the app triggers a background sync.
+3. Confirm your drafted values remain in the form fields, and the **Save changes** button is still enabled until you save or discard.
+
+### Regression Check: Local Day Boundaries
+
+Verify the daily reset respects the player’s local time instead of UTC midnight:
+
+1. Temporarily change your system clock (or use browser dev tools) to 11:55 PM local time and note today’s date in the Admin Control Center diagnostics.
+2. Advance the clock past 12:05 AM local time and trigger a visibility change (switch tabs or reload).
+3. Confirm the displayed “today” date updates only after the local midnight passes, and all players see the refreshed quest deck together.
+
 Feel free to expand the chore library, tweak reward pools, or drop in real authentication to turn this prototype into your own productivity game.

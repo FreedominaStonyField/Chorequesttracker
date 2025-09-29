@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import './App.css';
 import { DEFAULT_CHORE_LIBRARY, type ChoreTemplate } from './data/choreLibrary';
 import type {
@@ -547,11 +547,7 @@ function App() {
     saveState(state);
   }, [state]);
 
-  useEffect(() => {
-    if (!state) return;
-    setSettingsDraft(cloneSettings(state.adminSettings));
-    setChoreDrafts(cloneChoreLibrary(state.choreLibrary));
-  }, [state]);
+  const hasHydratedDraftsRef = useRef(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -607,6 +603,22 @@ function App() {
     const sanitizedDraft = sanitizeChoreLibrary(choreDrafts);
     return !librariesEqual(sanitizedDraft, state.choreLibrary);
   }, [choreDrafts, state]);
+
+  useEffect(() => {
+    if (!state) return;
+
+    const hasHydratedOnce = hasHydratedDraftsRef.current;
+    const allowHydration =
+      !hasHydratedOnce || !showAdmin || (!settingsDirty && !choresDirty);
+
+    if (!allowHydration) {
+      return;
+    }
+
+    setSettingsDraft(cloneSettings(state.adminSettings));
+    setChoreDrafts(cloneChoreLibrary(state.choreLibrary));
+    hasHydratedDraftsRef.current = true;
+  }, [state, showAdmin, settingsDirty, choresDirty]);
 
   const hasUnsavedAdminChanges = showAdmin && (settingsDirty || choresDirty);
   const adminActionsDisabled = !state;

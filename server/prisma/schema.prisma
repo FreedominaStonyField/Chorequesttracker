@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AppState {
+  id        Int     @id @default(1)
+  activeUser String?
+  cycleId   String?
+}
+
+model AdminSettings {
+  id             Int  @id @default(1)
+  baseRewardPool Int
+}
+
+model UserProfile {
+  userId         String @id
+  totalEarned    Int
+  totalCashedOut Int
+}
+
+model ChoreTemplate {
+  id          String @id
+  orderIndex  Int
+  title       String
+  description String
+  minPercent  Float
+  maxPercent  Float
+}
+
+model CycleState {
+  cycleId                   String           @id
+  startDate                 String
+  dayIndex                  Int
+  cycleLength               Int
+  rewardPool                Int
+  carryOverFromPreviousCycle Int
+  dailyBudgets              Json
+  configBaseRewardPool      Int
+  librarySignature          String
+  dailyPlans                DailyChorePlan[]
+}
+
+model DailyChorePlan {
+  id          Int          @id @default(autoincrement())
+  cycleId     String
+  orderIndex  Int
+  date        String
+  budget      Int
+  unallocated Int
+  chores      QuestChore[]
+  cycle       CycleState   @relation(fields: [cycleId], references: [cycleId], onDelete: Cascade)
+}
+
+model QuestChore {
+  id                  Int            @id @default(autoincrement())
+  planId              Int
+  orderIndex          Int
+  questId             String
+  reward              Int
+  completed           Boolean
+  completedBy         String?
+  completionTimestamp String?
+  templateId          String
+  templateTitle       String
+  templateDescription String
+  templateMinPercent  Float
+  templateMaxPercent  Float
+  plan                DailyChorePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}

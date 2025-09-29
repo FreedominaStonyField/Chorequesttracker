@@ -10,17 +10,35 @@ ChoreQuest Tracker is a gamified daily chore web app inspired by gacha-style que
 - **Profile switching** – Basic login swaps between Fransisco, Lewis, Jero, and Saffire with separate ledgers.
 - **Progress tracking** – Track total cash earned, withdrawn, and rollover balances.
 - **Animated rewards** – Claiming a chore triggers a celebratory pop-up so you feel the win.
-- **Local persistence** – Progress is saved in `localStorage` so the deck is waiting when you return.
+- **Backend persistence** – Progress is stored in a SQLite database behind the new Express API so the deck survives refreshes and multi-device use.
 - **Admin debug tools** – Run reward pool simulations and regenerate the daily deck to validate payouts.
 
 ## Getting Started
 
 ```bash
+# Install front-end dependencies
 npm install
-npm run dev
+
+# Install server dependencies and apply migrations
+cd server
+npm install
+npx prisma migrate dev
+cd ..
+
+# Start both dev servers (API + Vite)
+npm run dev:full
 ```
 
-The development server now binds to `0.0.0.0`, so you can open it from other devices on your local network using your machine's IP address on port `5173` (e.g., `http://192.168.1.10:5173`).
+The Express API boots on port `4000` and the Vite dev server runs on port `5173`, both bound to `0.0.0.0` so you can test across devices.
+
+Create a `.env` file at the repo root (or copy `.env.example`) so the client can reach the API:
+
+```env
+VITE_API_BASE_URL="http://localhost:4000/api"
+VITE_API_TOKEN="dev-token"
+```
+
+The server reads its own `.env` (copied from `server/.env.example`) for `DATABASE_URL`, `API_TOKEN`, and `PORT` values.
 
 ## Production Build
 

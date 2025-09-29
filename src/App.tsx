@@ -538,8 +538,18 @@ function App() {
 
   useEffect(() => {
     const today = todayISO();
-    const stored = loadState();
-    setState(synchronizeRootState(stored, today));
+    let isCancelled = false;
+
+    void (async () => {
+      const stored = await loadState();
+      if (!isCancelled) {
+        setState(synchronizeRootState(stored, today));
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {

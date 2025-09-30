@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import './App.css';
 import { DEFAULT_CHORE_LIBRARY, type ChoreTemplate } from './data/choreLibrary';
 import type {
@@ -203,7 +203,7 @@ function allocateRewardsForChores(
     entry.allocated = entry.minAmount + Math.min(flexCapacity, share);
   });
 
-  let distributedExtra = entries.reduce(
+  const distributedExtra = entries.reduce(
     (sum, entry) => sum + (entry.allocated - entry.minAmount),
     0,
   );
@@ -536,27 +536,57 @@ function App() {
   const [diagnosticIterations, setDiagnosticIterations] = useState(25);
   const [diagnostics, setDiagnostics] = useState<PoolDiagnostics | null>(null);
 
+  const lastSavedSignatureRef = useRef<string | null>(null);
+
+  const refreshFromServer = useCallback(
+    async (signal?: AbortSignal) => {
+      const remote = await loadState();
+      if (signal?.aborted) return;
+
+      const today = todayISO();
+      const remoteSignature = remote ? JSON.stringify(remote) : null;
+      lastSavedSignatureRef.current = remoteSignature;
+
+      setState((current) => {
+        const baseline = remote ?? current ?? null;
+        return synchronizeRootState(baseline, today);
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
-    const today = todayISO();
-    const stored = loadState();
-    setState(synchronizeRootState(stored, today));
-  }, []);
+    const controller = new AbortController();
+    void refreshFromServer(controller.signal);
+    return () => {
+      controller.abort();
+    };
+  }, [refreshFromServer]);
 
   useEffect(() => {
     if (!state) return;
-    saveState(state);
+
+    const signature = JSON.stringify(state);
+    if (lastSavedSignatureRef.current === signature) {
+      return;
+    }
+
+    void (async () => {
+      await saveState(state);
+      lastSavedSignatureRef.current = signature;
+    })();
   }, [state]);
 
   const hasHydratedDraftsRef = useRef(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setState((current) => synchronizeRootState(current, todayISO()));
+      void refreshFromServer();
     }, 1000 * 60 * 5);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        setState((current) => synchronizeRootState(current, todayISO()));
+        void refreshFromServer();
       }
     };
 
@@ -566,7 +596,7 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [refreshFromServer]);
 
   const activeUserId = state?.activeUser ?? null;
   const activeStats = activeUserId ? state?.profiles[activeUserId] : null;

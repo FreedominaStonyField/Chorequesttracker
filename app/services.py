@@ -102,16 +102,29 @@ class ChoreService:
             return list(session.exec(statement))
 
     @staticmethod
-    def get_daily_chores(date_value: date) -> List[DailyChore]:
+    def get_daily_chores(date_value: date, status_filter: str = "pending") -> List[DailyChore]:
         with get_session() as session:
             statement = (
                 select(DailyChore)
                 .where(DailyChore.date == date_value)
-                .where(DailyChore.status == "pending")
                 .join(DailyChore.template)
                 .order_by(DailyChore.id)
             )
+            if status_filter and status_filter != "all":
+                statement = statement.where(DailyChore.status == status_filter)
             return list(session.exec(statement))
+
+    @staticmethod
+    def get_active_week_details() -> WeeklyPool:
+        with get_session() as session:
+            state = ChoreService.ensure_state(session)
+            if not state.active_week_id:
+                raise ValueError("No active week. Start a week before fetching details.")
+            week = session.get(WeeklyPool, state.active_week_id)
+            if not week:
+                raise ValueError("Active week record is missing.")
+            session.refresh(week)
+            return week
 
     @staticmethod
     def complete_chore(chore_id: int, member_name: str) -> DailyChore:

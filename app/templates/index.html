@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chore Quest Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Chore Quest Tracker</h1>
+      <p class="tagline">
+        Track daily chores, assign completions, and manage the weekly cash pool from one place.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Weekly Pool</h2>
+        <div id="week-info" class="card muted">No active week yet.</div>
+        <form id="week-form" class="card form-grid">
+          <h3>Start New Week</h3>
+          <label>
+            Start Date
+            <input type="date" name="week_start" required />
+          </label>
+          <label>
+            Base Amount ($)
+            <input type="number" name="base_amount" min="0" step="0.01" required />
+          </label>
+          <button type="submit">Activate Week</button>
+          <p class="hint">Any pending bonus will be added automatically.</p>
+        </form>
+      </section>
+
+      <section>
+        <h2>Chore Templates</h2>
+        <div id="template-list" class="card muted">No templates created.</div>
+        <form id="template-form" class="card form-grid">
+          <h3>Add Template</h3>
+          <label>
+            Name
+            <input type="text" name="name" required />
+          </label>
+          <label>
+            Difficulty (% of pool)
+            <input type="number" name="difficulty_percentage" min="1" max="100" step="1" required />
+          </label>
+          <button type="submit">Create Template</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Daily Chores</h2>
+        <form id="day-controls" class="card form-grid">
+          <label>
+            Date
+            <input type="date" name="date" />
+          </label>
+          <label>
+            Status Filter
+            <select name="status">
+              <option value="pending" selected>Pending</option>
+              <option value="completed">Completed</option>
+              <option value="expired">Expired</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button type="button" data-action="load">Refresh List</button>
+            <button type="button" data-action="distribute">Distribute New Chores</button>
+          </div>
+        </form>
+
+        <div id="chore-list" class="card muted">No chores scheduled for the selected day.</div>
+      </section>
+
+      <section>
+        <h2>Daily Rollover</h2>
+        <form id="rollover-form" class="card form-grid">
+          <label>
+            Date to Rollover
+            <input type="date" name="date" required />
+          </label>
+          <button type="submit">Rollover Unclaimed Rewards</button>
+        </form>
+        <div id="rollover-message" class="card muted"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>Prototype interface &bull; Data refreshes automatically after each action.</small>
+    </footer>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

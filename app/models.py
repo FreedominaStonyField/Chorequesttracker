@@ -1,7 +1,5 @@
-from __future__ import annotations
-
-from datetime import date, datetime
-from typing import Optional
+from datetime import date as dt_date, datetime
+from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -14,20 +12,20 @@ class ChoreTemplate(SQLModel, table=True):
     difficulty_percentage: float = Field(description="Percentage of the weekly pool allocated to this chore")
     is_active: bool = Field(default=True, index=True)
 
-    chores: list[DailyChore] = Relationship(back_populates="template")  # type: ignore[name-defined]
+    chores: List["DailyChore"] = Relationship(back_populates="template")
 
 
 class WeeklyPool(SQLModel, table=True):
     __tablename__ = "weekly_pools"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    week_start: date = Field(index=True)
+    week_start: dt_date = Field(index=True)
     base_amount: float
     bonus_carryover: float = Field(default=0.0)
     total_pool: float = Field(description="Base amount plus bonus carryover")
     available_amount: float = Field(description="Remaining pool available for payouts")
 
-    chores: list[DailyChore] = Relationship(back_populates="week")  # type: ignore[name-defined]
+    chores: List["DailyChore"] = Relationship(back_populates="week")
 
 
 class SystemState(SQLModel, table=True):
@@ -44,7 +42,7 @@ class DailyChore(SQLModel, table=True):
     __tablename__ = "daily_chores"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    date: date = Field(index=True)
+    date: dt_date = Field(index=True)
     status: str = Field(default="pending", index=True)
     reward_amount: float
     template_id: int = Field(foreign_key="chore_templates.id")
@@ -52,5 +50,5 @@ class DailyChore(SQLModel, table=True):
     completed_by: Optional[str] = Field(default=None, index=True)
     completed_at: Optional[datetime] = Field(default=None)
 
-    template: ChoreTemplate = Relationship(back_populates="chores")
-    week: WeeklyPool = Relationship(back_populates="chores")
+    template: Optional["ChoreTemplate"] = Relationship(back_populates="chores")
+    week: Optional["WeeklyPool"] = Relationship(back_populates="chores")

@@ -1,0 +1,175 @@
+// Prisma schema for Chore Gacha MVP
+
+// Datasource targets SQLite for a simple file-based deployment.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Generator configuration for Prisma Client (TypeScript by default).
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum CycleType {
+  WEEKLY
+  MONTHLY
+}
+
+enum CycleStatus {
+  UPCOMING
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum ChoreStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+  EXPIRED
+}
+
+enum LedgerEntryType {
+  ALLOCATION    // Budget allocated to a day or chore
+  CLAIM         // Reward claimed on completion
+  RETURN        // Unclaimed reward returned to pool
+  ADJUSTMENT    // Manual admin adjustment
+  BONUS         // Bonus pot transfer between days
+}
+
+enum FrequencyType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+model AppSetting {
+  id                   Int       @id @default(autoincrement())
+  currencySymbol       String    @default("$")
+  defaultCycleType     CycleType @default(MONTHLY)
+  dailyBudgetCapCents  Int?      // Optional hard cap for per-day allocation
+  minimumRewardCents   Int       @default(25)
+  bonusDecayPercent    Int       @default(90) // Percentage kept when rolling bonus forward
+  timezone             String    @default("local")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Cycle {
+  id                 Int             @id @default(autoincrement())
+  cycleType          CycleType
+  status             CycleStatus     @default(UPCOMING)
+  startDate          DateTime
+  endDate            DateTime
+  poolCents          Int
+  spentCents         Int             @default(0)
+  reservedCents      Int             @default(0) // Locked for active chores
+  rolloverCents      Int             @default(0)
+  unawardedCents     Int             @default(0) // Pool remaining that has not been assigned yet
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  days               CycleDayBudget[]
+  choreInstances     ChoreInstance[]
+  ledgerEntries      RewardLedgerEntry[]
+}
+
+model CycleDayBudget {
+  id                   Int        @id @default(autoincrement())
+  cycle                Cycle      @relation(fields: [cycleId], references: [id])
+  cycleId              Int
+  date                 DateTime
+  allocatedBudgetCents Int
+  bonusCarryoverCents  Int        @default(0)
+  wobblePercent        Int?       // +/- variance applied when the budget was generated
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  choreInstances       ChoreInstance[]
+
+  @@unique([cycleId, date])
+}
+
+model ChoreTemplate {
+  id                Int             @id @default(autoincrement())
+  name              String
+  description       String?
+  difficultyWeight  Float           @default(1)
+  isEnabled         Boolean         @default(true)
+  frequencyType     FrequencyType   @default(DAILY)
+  frequencyRules    Json?           // Flexible JSON object for rule details
+  defaultDueTime    String?         // Stored as HH:mm for local reminders
+  tag               String?         // Optional grouping label
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  choreInstances    ChoreInstance[]
+}
+
+model ChoreInstance {
+  id                 Int                @id @default(autoincrement())
+  date               DateTime
+  status             ChoreStatus        @default(PENDING)
+  assignedTo         String             @default("You")
+  rewardCents        Int                @default(0)
+  baselineShare      Float?             // Pre-normalized share based on weights
+  varianceFactor     Float?             // Random variance multiplier applied
+  dailyPercentage    Float?             // Final percentage of the day's budget
+  randomSeed         BigInt?            // Seed used for deterministic PRNG
+  notes              String?
+  dueTimeOverride    String?
+  completedAt        DateTime?
+  rewardClaimedAt    DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  cycle              Cycle             @relation(fields: [cycleId], references: [id])
+  cycleId            Int
+  template           ChoreTemplate     @relation(fields: [templateId], references: [id])
+  templateId         Int
+  dailyBudget        CycleDayBudget?   @relation(fields: [dailyBudgetId], references: [id])
+  dailyBudgetId      Int?
+  ledgerEntries      RewardLedgerEntry[]
+
+  @@index([date])
+  @@index([status])
+  @@unique([templateId, date], map: "unique_template_date")
+}
+
+model RewardLedgerEntry {
+  id               Int           @id @default(autoincrement())
+  cycle            Cycle         @relation(fields: [cycleId], references: [id])
+  cycleId          Int
+  choreInstance    ChoreInstance? @relation(fields: [choreInstanceId], references: [id])
+  choreInstanceId  Int?
+  entryType        LedgerEntryType
+  amountCents      Int
+  occurredAt       DateTime      @default(now())
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+
+  @@index([cycleId, occurredAt])
+}
+
+model BonusCarryover {
+  id               Int           @id @default(autoincrement())
+  cycle            Cycle         @relation(fields: [cycleId], references: [id])
+  cycleId          Int
+  sourceDate       DateTime
+  targetDate       DateTime
+  amountCents      Int
+  decayPercent     Int           @default(90)
+  createdAt        DateTime      @default(now())
+
+  @@unique([cycleId, sourceDate, targetDate])
+}
+
+model AuditLog {
+  id          Int       @id @default(autoincrement())
+  message     String
+  actor       String    @default("system")
+  context     Json?
+  createdAt   DateTime  @default(now())
+}

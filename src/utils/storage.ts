@@ -1,31 +1,85 @@
 import type { RootState } from '../types';
 
-const STORAGE_KEY = 'chorequest-state-v7';
+const DEFAULT_API_BASE = '/api';
 
-export function loadState(): RootState | null {
-  if (typeof window === 'undefined') return null;
+const getApiBaseUrl = () => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_API_BASE;
+  }
+
+  const configured = (window as typeof window & { __API_BASE__?: string }).__API_BASE__;
+  if (configured) return configured;
+
+  const envBase = import.meta.env?.VITE_API_BASE_URL;
+  return typeof envBase === 'string' && envBase.length > 0 ? envBase : DEFAULT_API_BASE;
+};
+
+const resolveApiUrl = (path: string) => {
+  const base = getApiBaseUrl().replace(/\/$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+};
+
+export async function loadState(): Promise<RootState | null> {
+  if (typeof fetch === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as RootState;
+    const response = await fetch(resolveApiUrl('/state'), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+      },
+    });
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Unexpected response ${response.status}`);
+    }
+
+    const data = (await response.json()) as RootState;
+    return data;
   } catch (error) {
     console.error('Failed to load state', error);
     return null;
   }
 }
 
-export function saveState(state: RootState): void {
-  if (typeof window === 'undefined') return;
+export async function saveState(state: RootState): Promise<void> {
+  if (typeof fetch === 'undefined') return;
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const response = await fetch(resolveApiUrl('/state'), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(state),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Unexpected response ${response.status}`);
+    }
   } catch (error) {
     console.error('Failed to save state', error);
   }
 }
 
-export function clearState(): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(STORAGE_KEY);
+export async function clearState(): Promise<void> {
+  if (typeof fetch === 'undefined') return;
+
+  try {
+    const response = await fetch(resolveApiUrl('/state'), {
+      method: 'DELETE',
+    });
+
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Unexpected response ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Failed to clear state', error);
+  }
 }

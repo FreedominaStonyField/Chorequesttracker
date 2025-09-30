@@ -10,17 +10,23 @@ ChoreQuest Tracker is a gamified daily chore web app inspired by gacha-style que
 - **Profile switching** – Basic login swaps between Fransisco, Lewis, Jero, and Saffire with separate ledgers.
 - **Progress tracking** – Track total cash earned, withdrawn, and rollover balances.
 - **Animated rewards** – Claiming a chore triggers a celebratory pop-up so you feel the win.
-- **Local persistence** – Progress is saved in `localStorage` so the deck is waiting when you return.
+- **Shared persistence** – Progress lives in a plain-text JSON file behind the lightweight API so multiple devices stay in sync.
 - **Admin debug tools** – Run reward pool simulations and regenerate the daily deck to validate payouts.
 
 ## Getting Started
 
 ```bash
 npm install
-npm run dev
+npm install --prefix server
+npm run dev:full
 ```
 
-The development server now binds to `0.0.0.0`, so you can open it from other devices on your local network using your machine's IP address on port `5173` (e.g., `http://192.168.1.10:5173`).
+The Vite dev server still binds to `0.0.0.0` and is proxied through the API, so you can open it from other devices on your local network using your machine's IP address on port `5173` (e.g., `http://192.168.1.10:5173`).
+
+To run an individual target instead:
+
+- `npm run dev` – Frontend only
+- `npm run dev:server` – API only
 
 ## Production Build
 
@@ -36,7 +42,8 @@ The build output is written to `dist/` and can be served by any static file host
 - `src/App.tsx` – Main UI and game state logic.
 - `src/data/choreLibrary.ts` – Pool of quest card templates.
 - `src/types.ts` – Shared TypeScript types for cycles and chores.
-- `src/utils/` – Helper functions for randomization, date math, and persistence.
+- `src/utils/` – Helper functions for randomization, date math, and API persistence.
+- `server/` – Minimal Express backend that persists the shared JSON state to disk.
 
 ## Admin Testing Toolkit
 

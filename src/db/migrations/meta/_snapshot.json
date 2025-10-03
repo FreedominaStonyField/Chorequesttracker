@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "dialect": "sqlite",
+  "entries": [
+    "000_users",
+    "001_notification_preferences",
+    "002_card_templates",
+    "003_card_instances",
+    "004_claims",
+    "005_completions",
+    "006_user_inventories",
+    "007_audit_log",
+    "008_settings"
+  ]
+}

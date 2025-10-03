@@ -30,6 +30,12 @@ npm run dev
 
 Open http://localhost:5173 in your browser. The seed loader populates four demo users and twelve chore templates on first launch.
 
+### Bootstrap flow
+
+- The API allows the very first `POST /users` request to succeed without a household PIN so that an initial guardian account can be created from a fresh database.
+- After at least one user exists, all subsequent mutations require a valid `X-Household-Pin` header or a matching `PIN_BYPASS_SECRET` environment variable to act as the system identity.
+- Configure `PIN_BYPASS_SECRET` for automation or bootstrap scripts that need to run before any household accounts have been provisioned.
+
 ### Available scripts
 
 | Script | Description |
@@ -61,7 +67,7 @@ Open http://localhost:5173 in your browser. The seed loader populates four demo 
 
 ## Seed data
 
-The seed loader (`useSeedData`) creates:
+Seeding is optional when running against a clean database—the unauthenticated `POST /users` bootstrap flow covers manual setup. The seed loader (`useSeedData`) creates:
 
 - 4 example users (Ava, Milo, Nova, Zen) with emoji avatars.
 - 12 quest templates spanning all recurrence types with lore-rich flavour text.

@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 import type { User } from '../types'
+import { setHouseholdPin } from '../lib/api'
 
 interface UserPickerProps {
   users: User[]
@@ -24,6 +25,7 @@ export function UserPicker({ users, onSelect }: UserPickerProps) {
       setError('Incorrect household PIN')
       return
     }
+    setHouseholdPin(selectedUser.pin ? pin.trim() : undefined)
     onSelect(selectedUser)
     setPin('')
     setError('')

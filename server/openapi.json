@@ -1,0 +1,309 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "QuestBoard API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:3001/api" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": { "description": "Server is running" }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "summary": "List users",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Users",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserList" } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create user",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+        }
+      }
+    },
+    "/users/{id}": {
+      "put": {
+        "summary": "Upsert user",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Delete user",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/users/{id}/inventory": {
+      "get": {
+        "summary": "Get user inventory",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Inventory", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInventory" } } } }
+        }
+      }
+    },
+    "/users/{id}/history": {
+      "get": {
+        "summary": "Get completion history",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "History", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/HistoryEntry" } } } } }
+        }
+      }
+    },
+    "/templates": {
+      "get": {
+        "summary": "List templates",
+        "responses": { "200": { "description": "Templates", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TemplateList" } } } } }
+      }
+    },
+    "/templates/{id}": {
+      "put": {
+        "summary": "Upsert template",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CardTemplate" } } } },
+        "responses": { "200": { "description": "Upserted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CardTemplate" } } } } }
+      },
+      "delete": {
+        "summary": "Delete template",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/templates/{id}/duplicate": {
+      "post": {
+        "summary": "Duplicate template",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "201": { "description": "Duplicated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CardTemplate" } } } } }
+      }
+    },
+    "/instances/feed": {
+      "get": {
+        "summary": "Get quest feed",
+        "responses": {
+          "200": { "description": "Feed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Feed" } } } }
+        }
+      }
+    },
+    "/instances/{id}/complete": {
+      "post": {
+        "summary": "Complete quest",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompleteRequest" } } } },
+        "responses": { "201": { "description": "Completion", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Completion" } } } } }
+      }
+    },
+    "/claims": {
+      "post": {
+        "summary": "Claim quest",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClaimRequest" } } } },
+        "responses": { "201": { "description": "Claim", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Claim" } } } } }
+      }
+    },
+    "/claims/{id}/undo": {
+      "post": {
+        "summary": "Undo claim",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UndoRequest" } } } },
+        "responses": { "204": { "description": "Undone" } }
+      }
+    },
+    "/settings": {
+      "get": {
+        "summary": "Get settings",
+        "responses": { "200": { "description": "Settings", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } }
+      },
+      "put": {
+        "summary": "Update settings",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } },
+        "responses": { "204": { "description": "Updated" } }
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "summary": "Leaderboard",
+        "parameters": [{ "name": "range", "in": "query", "schema": { "type": "string", "enum": ["week", "month", "all"] } }],
+        "responses": { "200": { "description": "Leaders", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Leaderboard" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "color": { "type": "string" },
+          "avatarEmoji": { "type": "string" },
+          "joinDate": { "type": "string" },
+          "isAdult": { "type": "boolean" },
+          "pin": { "type": "string" }
+        },
+        "required": ["id", "name", "color", "avatarEmoji", "joinDate"]
+      },
+      "UserList": {
+        "type": "array",
+        "items": { "$ref": "#/components/schemas/User" }
+      },
+      "CardTemplate": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "flavorText": { "type": "string" },
+          "difficulty": { "type": "string" },
+          "points": { "type": "integer" },
+          "recurrence": { "type": "string" },
+          "active": { "type": "boolean" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": "string" },
+          "createdBy": { "type": "string" },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        },
+        "required": ["id", "title", "difficulty", "points", "recurrence", "active", "tags", "createdBy", "createdAt", "updatedAt"]
+      },
+      "TemplateList": {
+        "type": "array",
+        "items": { "$ref": "#/components/schemas/CardTemplate" }
+      },
+      "CardInstance": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "templateId": { "type": "string" },
+          "scheduledFor": { "type": "string" },
+          "status": { "type": "string" },
+          "assignedTo": { "type": "string" },
+          "createdAt": { "type": "string" },
+          "expiresAt": { "type": "string" }
+        },
+        "required": ["id", "templateId", "scheduledFor", "status", "createdAt", "expiresAt"]
+      },
+      "Completion": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "cardInstanceId": { "type": "string" },
+          "userId": { "type": "string" },
+          "completedAt": { "type": "string" },
+          "proofNote": { "type": "string" },
+          "proofPhotoUrl": { "type": "string" },
+          "pointsAwarded": { "type": "integer" }
+        },
+        "required": ["id", "cardInstanceId", "userId", "completedAt", "pointsAwarded"]
+      },
+      "Claim": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "cardInstanceId": { "type": "string" },
+          "userId": { "type": "string" },
+          "claimedAt": { "type": "string" },
+          "expiresAt": { "type": "string" }
+        },
+        "required": ["id", "cardInstanceId", "userId", "claimedAt", "expiresAt"]
+      },
+      "Feed": {
+        "type": "array",
+        "items": {
+          "allOf": [
+            { "$ref": "#/components/schemas/CardInstance" },
+            {
+              "type": "object",
+              "properties": {
+                "template": { "$ref": "#/components/schemas/CardTemplate" },
+                "assignedUser": { "$ref": "#/components/schemas/User" },
+                "completion": { "$ref": "#/components/schemas/Completion" }
+              }
+            }
+          ]
+        }
+      },
+      "UserInventory": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string" },
+          "items": { "type": "array", "items": { "type": "object" } },
+          "totalPoints": { "type": "integer" },
+          "badges": { "type": "array", "items": { "type": "object" } },
+          "streaks": { "type": "object" }
+        },
+        "required": ["userId", "items", "totalPoints", "badges", "streaks"]
+      },
+      "HistoryEntry": {
+        "type": "object",
+        "properties": {
+          "completion": { "$ref": "#/components/schemas/Completion" },
+          "instance": { "$ref": "#/components/schemas/CardInstance" },
+          "template": { "$ref": "#/components/schemas/CardTemplate" }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "refreshHour": { "type": "integer" },
+          "weekAnchor": { "type": "integer" },
+          "monthAnchor": { "type": "integer" },
+          "proofRequiredTemplateIds": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["refreshHour", "weekAnchor", "monthAnchor", "proofRequiredTemplateIds"]
+      },
+      "Leaderboard": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "user": { "$ref": "#/components/schemas/User" },
+            "points": { "type": "integer" },
+            "completions": { "type": "integer" },
+            "earliest": { "type": "string" }
+          }
+        }
+      },
+      "ClaimRequest": {
+        "type": "object",
+        "properties": {
+          "cardId": { "type": "string" },
+          "userId": { "type": "string" }
+        },
+        "required": ["cardId", "userId"]
+      },
+      "UndoRequest": {
+        "type": "object",
+        "properties": { "userId": { "type": "string" } },
+        "required": ["userId"]
+      },
+      "CompleteRequest": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string" },
+          "proof": { "type": "object" }
+        },
+        "required": ["userId"]
+      }
+    }
+  }
+}

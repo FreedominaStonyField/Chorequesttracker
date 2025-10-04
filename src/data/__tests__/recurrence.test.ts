@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeExpiry, computeNextInstanceDate } from '../repository'
+import { computeExpiry, computeNextInstanceDate } from '../../shared/scheduling'
 import type { CardTemplate, Settings } from '../../types'
 
 const baseTemplate: CardTemplate = {

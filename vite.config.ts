@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, defineProject } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -28,11 +28,25 @@ export default defineConfig({
     host: true,
   },
   test: {
-    environment: 'jsdom',
-    setupFiles: './vitest.setup.ts',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
     },
+    projects: [
+      defineProject({
+        test: {
+          environment: 'jsdom',
+          setupFiles: './vitest.setup.ts',
+          include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.ts'],
+        },
+      }),
+      defineProject({
+        test: {
+          environment: 'node',
+          setupFiles: './vitest.setup.ts',
+          include: ['server/**/*.test.ts'],
+        },
+      }),
+    ],
   },
 })

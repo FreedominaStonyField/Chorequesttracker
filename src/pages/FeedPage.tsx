@@ -7,7 +7,7 @@ import { useClaimMutation, useCompleteMutation, useFeed, useUpsertTemplateMutati
 import { Modal } from '../components/Modal'
 import { CardEditorForm } from '../features/editor/CardEditorForm'
 import type { CardTemplate, CardStatus, Difficulty } from '../types'
-import type { FeedCard } from '../data/repository'
+import type { FeedCard } from 'shared/types'
 
 export function FeedPage() {
   const [filter, setFilter] = useAtom(questFilterAtom)

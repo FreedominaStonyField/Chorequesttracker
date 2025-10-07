@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Route, Routes, useNavigate } from 'react-router-dom'
 import { useAtom } from 'jotai'
-import { useUsers } from './hooks/useRepository'
+import { useRepositoryEvents, useUsers } from './hooks/useRepository'
 import { useSeedData } from './data/seedLoader'
 import { currentUserAtom } from './lib/state'
 import { AppHeader } from './components/AppHeader'
@@ -19,6 +19,7 @@ export default function App() {
   const [userModalOpen, setUserModalOpen] = useState(false)
   const navigate = useNavigate()
   useSeedData()
+  useRepositoryEvents()
 
   useEffect(() => {
     if (users && users.length && !currentUser) {

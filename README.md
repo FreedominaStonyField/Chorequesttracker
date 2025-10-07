@@ -1,6 +1,6 @@
 # QuestBoard
 
-QuestBoard is a mobile-first React + TypeScript progressive web app that turns recurring family chores into collectible quest cards. It runs completely offline with IndexedDB storage, synchronises through a repository abstraction, and is ready to hook up to an API when needed.
+QuestBoard is a mobile-first React + TypeScript progressive web app that turns recurring family chores into collectible quest cards. It now ships with a Node.js + Express backend that persists data to SQLite and streams quest updates to connected clients through Socket.IO.
 
 ## Features
 
@@ -20,15 +20,25 @@ QuestBoard is a mobile-first React + TypeScript progressive web app that turns r
 - State/data: React Query, Jotai, Dexie (IndexedDB) with repository abstraction
 - Testing: Vitest, Testing Library, fake-indexeddb for Dexie unit tests
 - PWA tooling: vite-plugin-pwa, custom icons, offline-first service worker
+- Backend: Express, better-sqlite3 (SQLite), Socket.IO, Vitest
 
 ## Getting started
 
 ```bash
 npm install
-npm run dev
+npm --prefix server install
+npm run dev # Frontend on http://localhost:5173
+npm --prefix server run backend:dev # Backend on http://localhost:4000
 ```
 
-Open http://localhost:5173 in your browser. The seed loader populates four demo users and twelve chore templates on first launch.
+Open http://localhost:5173 in your browser. The seed loader populates four demo users and twelve chore templates on first launch, while the backend seeds the same data in SQLite for API-backed persistence.
+
+### Manual verification
+
+1. Start the backend with `npm --prefix server run backend:dev` (http://localhost:4000) and the frontend with `npm run dev` (http://localhost:5173).
+2. Open QuestBoard in two browser windows and select the same household hero in each.
+3. In the first window, claim and complete a quest from the feed.
+4. Observe the second window update in real-time as the completion notification arrives via Socket.IO and the React Query cache refreshes automatically.
 
 ### Available scripts
 
@@ -38,7 +48,9 @@ Open http://localhost:5173 in your browser. The seed loader populates four demo 
 | `npm run build` | Type-check and create a production build |
 | `npm run preview` | Preview the built app |
 | `npm run lint` | Run ESLint over the project |
-| `npm run test` | Execute the Vitest unit test suite |
+| `npm run test` | Run frontend and backend test suites |
+| `npm run test:frontend` | Execute the frontend Vitest unit tests |
+| `npm run test:backend` | Execute the backend Vitest suite |
 | `npm run test:coverage` | Run tests with coverage reporting |
 
 ## Offline & sync notes
@@ -50,6 +62,7 @@ Open http://localhost:5173 in your browser. The seed loader populates four demo 
 ## Testing & quality
 
 - Unit tests cover scoring multipliers, streak logic, recurrence scheduling, and claim conflict handling with fake-indexeddb.
+- Backend Vitest specs spin up the Express + Socket.IO server to ensure realtime quest events broadcast between clients.
 - Accessibility is built-in with keyboard focus rings, labelled controls, and AA-compliant contrast.
 - Vitest runs in a jsdom environment with jest-dom assertions.
 
@@ -80,6 +93,12 @@ src/
   pages/             Route components (feed, history, leaderboard, settings, editor)
   pwa/               (reserved for future sync workers)
   types.ts           Core domain models
+shared/
+  types/             Shared domain models for client and server
+  seeds/             Seed data shared across runtimes
+server/
+  src/               Express API, repository, realtime gateway
+  tests/             Vitest coverage for backend realtime behaviour
 ```
 
 Enjoy turning chores into epic household quests! 🛡️

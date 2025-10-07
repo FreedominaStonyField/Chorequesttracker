@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { format, isBefore } from 'date-fns'
 import { DifficultyBadge } from './DifficultyBadge'
-import type { FeedCard } from '../data/repository'
+import type { FeedCard } from 'shared/types'
 import type { User } from '../types'
 import { difficultyMultiplier } from '../lib/scoring'
 

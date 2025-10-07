@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { repository } from '../data/repository'
-import type { CardTemplate, Settings, User } from '../types'
+import { useEffect } from 'react'
+import { apiRepository, subscribeToRepositoryEvents } from '../data/apiRepository'
+import type { CardTemplate, Settings, User, UserInventory } from '../types'
 
 const keys = {
   users: ['users'] as const,
@@ -13,25 +14,25 @@ const keys = {
 }
 
 export function useUsers() {
-  return useQuery({ queryKey: keys.users, queryFn: repository.getUsers })
+  return useQuery({ queryKey: keys.users, queryFn: apiRepository.getUsers })
 }
 
 export function useTemplates() {
-  return useQuery({ queryKey: keys.templates, queryFn: repository.getTemplates })
+  return useQuery({ queryKey: keys.templates, queryFn: apiRepository.getTemplates })
 }
 
 export function useFeed() {
-  return useQuery({ queryKey: keys.feed, queryFn: () => repository.getFeed() })
+  return useQuery({ queryKey: keys.feed, queryFn: () => apiRepository.getFeed() })
 }
 
 export function useLeaderboard(range: 'week' | 'month' | 'all') {
-  return useQuery({ queryKey: keys.leaderboard(range), queryFn: () => repository.getLeaderboard(range) })
+  return useQuery({ queryKey: keys.leaderboard(range), queryFn: () => apiRepository.getLeaderboard(range) })
 }
 
 export function useHistory(userId?: string) {
   return useQuery({
     queryKey: userId ? keys.history(userId) : ['history'],
-    queryFn: () => (userId ? repository.getHistory(userId) : Promise.resolve([])),
+    queryFn: () => (userId ? apiRepository.getHistory(userId) : Promise.resolve([])),
     enabled: Boolean(userId),
   })
 }
@@ -39,20 +40,20 @@ export function useHistory(userId?: string) {
 export function useInventory(userId?: string) {
   return useQuery({
     queryKey: userId ? keys.inventory(userId) : ['inventory'],
-    queryFn: () => (userId ? repository.getInventory(userId) : Promise.resolve(null)),
+    queryFn: () => (userId ? apiRepository.getInventory(userId) : Promise.resolve(null)),
     enabled: Boolean(userId),
   })
 }
 
 export function useSettings() {
-  return useQuery({ queryKey: keys.settings, queryFn: repository.getSettings })
+  return useQuery({ queryKey: keys.settings, queryFn: apiRepository.getSettings })
 }
 
 export function useUpsertTemplateMutation() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (payload: { template: CardTemplate; actorId: string }) =>
-      repository.upsertTemplate(payload.template, payload.actorId),
+      apiRepository.upsertTemplate(payload.template, payload.actorId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.templates })
       client.invalidateQueries({ queryKey: keys.feed })
@@ -64,7 +65,7 @@ export function useDuplicateTemplateMutation() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (payload: { templateId: string; actorId: string }) =>
-      repository.duplicateTemplate(payload.templateId, payload.actorId),
+      apiRepository.duplicateTemplate(payload.templateId, payload.actorId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.templates })
     },
@@ -75,7 +76,7 @@ export function useDeleteTemplateMutation() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (payload: { templateId: string; actorId: string }) =>
-      repository.deleteTemplate(payload.templateId, payload.actorId),
+      apiRepository.deleteTemplate(payload.templateId, payload.actorId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.templates })
       client.invalidateQueries({ queryKey: keys.feed })
@@ -86,7 +87,7 @@ export function useDeleteTemplateMutation() {
 export function useUpsertUserMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { user: User; actorId?: string }) => repository.upsertUser(payload.user, payload.actorId),
+    mutationFn: (payload: { user: User; actorId?: string }) => apiRepository.upsertUser(payload.user, payload.actorId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.users })
     },
@@ -96,7 +97,8 @@ export function useUpsertUserMutation() {
 export function useDeleteUserMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { userId: string; actorId: string }) => repository.deleteUser(payload.userId, payload.actorId),
+    mutationFn: (payload: { userId: string; actorId: string }) =>
+      apiRepository.deleteUser(payload.userId, payload.actorId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.users })
       client.invalidateQueries({ queryKey: keys.feed })
@@ -108,7 +110,8 @@ export function useDeleteUserMutation() {
 export function useClaimMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { cardId: string; userId: string }) => repository.claimCard(payload.cardId, payload.userId),
+    mutationFn: (payload: { cardId: string; userId: string }) =>
+      apiRepository.claimCard(payload.cardId, payload.userId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.feed })
     },
@@ -118,7 +121,8 @@ export function useClaimMutation() {
 export function useUndoClaimMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { claimId: string; userId: string }) => repository.undoClaim(payload.claimId, payload.userId),
+    mutationFn: (payload: { claimId: string; userId: string }) =>
+      apiRepository.undoClaim(payload.claimId, payload.userId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.feed })
     },
@@ -129,7 +133,7 @@ export function useCompleteMutation() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (payload: { cardId: string; userId: string; proof?: { note?: string; photoUrl?: string } }) =>
-      repository.completeCard(payload.cardId, payload.userId, payload.proof),
+      apiRepository.completeCard(payload.cardId, payload.userId, payload.proof),
     onSuccess: (_, variables) => {
       client.invalidateQueries({ queryKey: keys.feed })
       if (variables.userId) {
@@ -146,12 +150,64 @@ export function useCompleteMutation() {
 export function useSaveSettingsMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (settings: Settings) => repository.saveSettings(settings),
+    mutationFn: (settings: Settings) => apiRepository.saveSettings(settings),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.settings })
       client.invalidateQueries({ queryKey: keys.feed })
     },
   })
+}
+
+export function useRepositoryEvents() {
+  const client = useQueryClient()
+  useEffect(() => {
+    const unsubscribe = subscribeToRepositoryEvents((event) => {
+      switch (event.type) {
+        case 'user.upsert':
+        case 'user.delete':
+          client.invalidateQueries({ queryKey: keys.users })
+          client.invalidateQueries({ queryKey: keys.feed })
+          break
+        case 'template.upsert':
+        case 'template.delete':
+        case 'template.duplicate':
+          client.invalidateQueries({ queryKey: keys.templates })
+          client.invalidateQueries({ queryKey: keys.feed })
+          break
+        case 'instances.generated':
+        case 'instance.update':
+        case 'card.claim':
+        case 'card.claim.undo':
+        case 'card.complete':
+          client.invalidateQueries({ queryKey: keys.feed })
+          break
+        case 'inventory.update': {
+          const payload = event.payload as { inventory?: UserInventory }
+          const inventory = payload?.inventory
+          if (inventory?.userId) {
+            client.invalidateQueries({ queryKey: keys.inventory(inventory.userId) })
+            client.invalidateQueries({ queryKey: keys.history(inventory.userId) })
+          }
+          client.invalidateQueries({ queryKey: keys.leaderboard('week') })
+          client.invalidateQueries({ queryKey: keys.leaderboard('month') })
+          client.invalidateQueries({ queryKey: keys.leaderboard('all') })
+          break
+        }
+        case 'settings.update':
+          client.invalidateQueries({ queryKey: keys.settings })
+          client.invalidateQueries({ queryKey: keys.feed })
+          break
+        case 'seed':
+          client.invalidateQueries({ queryKey: keys.users })
+          client.invalidateQueries({ queryKey: keys.templates })
+          client.invalidateQueries({ queryKey: keys.feed })
+          break
+        default:
+          break
+      }
+    })
+    return unsubscribe
+  }, [client])
 }
 
 export const repositoryKeys = keys

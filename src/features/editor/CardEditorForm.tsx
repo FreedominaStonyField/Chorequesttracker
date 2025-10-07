@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { nanoid } from 'nanoid'
 import type { CardTemplate, Difficulty, Recurrence } from '../../types'
 import { QuestCard } from '../../components/QuestCard'
-import type { FeedCard } from '../../data/repository'
+import type { FeedCard } from 'shared/types'
 
 const difficulties: Difficulty[] = ['easy', 'normal', 'hard', 'boss']
 const recurrences: Recurrence[] = ['daily', 'weekly', 'monthly', 'once']

@@ -64,6 +64,7 @@ Open http://localhost:5173 in your browser. The seed loader populates four demo 
 The seed loader (`useSeedData`) creates:
 
 - 4 example users (Ava, Milo, Nova, Zen) with emoji avatars.
+- Seeded users start without a PIN so the roster is unlocked by default; add one later from **Settings → Household PIN** if desired.
 - 12 quest templates spanning all recurrence types with lore-rich flavour text.
 
 Delete browser storage to re-run the seeding process.

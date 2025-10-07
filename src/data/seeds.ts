@@ -3,10 +3,10 @@ import type { CardTemplate, User } from '../types'
 export function createSeedUsers(): User[] {
   const today = new Date().toISOString()
   return [
-    { id: 'ava', name: 'Ava', color: '#FDE68A', avatarEmoji: '🛡️', joinDate: today, isAdult: true, pin: '1111' },
-    { id: 'milo', name: 'Milo', color: '#F9A8D4', avatarEmoji: '🧙', joinDate: today, pin: '2222' },
-    { id: 'nova', name: 'Nova', color: '#93C5FD', avatarEmoji: '🗡️', joinDate: today, pin: '3333' },
-    { id: 'zen', name: 'Zen', color: '#86EFAC', avatarEmoji: '🧝', joinDate: today, pin: '4444' },
+    { id: 'ava', name: 'Ava', color: '#FDE68A', avatarEmoji: '🛡️', joinDate: today, isAdult: true },
+    { id: 'milo', name: 'Milo', color: '#F9A8D4', avatarEmoji: '🧙', joinDate: today },
+    { id: 'nova', name: 'Nova', color: '#93C5FD', avatarEmoji: '🗡️', joinDate: today },
+    { id: 'zen', name: 'Zen', color: '#86EFAC', avatarEmoji: '🧝', joinDate: today },
   ]
 }
 

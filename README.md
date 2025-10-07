@@ -26,10 +26,11 @@ QuestBoard is a mobile-first React + TypeScript progressive web app that turns r
 
 ```bash
 npm install
-npm --prefix server install
 npm run dev # Frontend on http://localhost:5173
 npm --prefix server run backend:dev # Backend on http://localhost:4000
 ```
+
+The repository is configured as an npm workspace, so the server dependencies are installed automatically when you run `npm install` at the root.
 
 Open http://localhost:5173 in your browser. The seed loader populates four demo users and twelve chore templates on first launch, while the backend seeds the same data in SQLite for API-backed persistence.
 

@@ -49,6 +49,27 @@ export function initializeDatabase() {
   seedDefaults()
 }
 
+export function resetDatabase() {
+  for (const table of jsonTables) {
+    db.prepare(`DELETE FROM ${table}`).run()
+  }
+  db.prepare('DELETE FROM settings').run()
+
+  const users = createSeedUsers()
+  replaceAll('users', users)
+
+  const templates = createSeedTemplates()
+  replaceAll('templates', templates)
+
+  const defaultSettings: Settings = {
+    refreshHour: 0,
+    weekAnchor: 1,
+    monthAnchor: 1,
+    proofRequiredTemplateIds: [],
+  }
+  writeSettings(defaultSettings)
+}
+
 function seedDefaults() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
   if (userCount.count === 0) {

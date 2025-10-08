@@ -88,7 +88,36 @@ export const repository = {
   },
 
   async deleteTemplate(templateId: string, actorId: string) {
-    await db.templates.delete(templateId)
+    await db.transaction('rw', db.templates, db.instances, db.claims, db.completions, db.inventories, db.settings, async () => {
+      const instances = await db.instances.where('templateId').equals(templateId).toArray()
+      const instanceIds = instances.map((instance) => instance.id)
+      let affectedUserIds = new Set<string>()
+
+      if (instanceIds.length > 0) {
+        const relatedCompletions = await db.completions.where('cardInstanceId').anyOf(instanceIds).toArray()
+        affectedUserIds = new Set(relatedCompletions.map((completion) => completion.userId))
+        await db.claims.where('cardInstanceId').anyOf(instanceIds).delete()
+        await db.completions.where('cardInstanceId').anyOf(instanceIds).delete()
+        await db.instances.bulkDelete(instanceIds)
+      }
+
+      await db.templates.delete(templateId)
+
+      const settings = await getSettings()
+      if (settings.proofRequiredTemplateIds.includes(templateId)) {
+        const nextSettings: Settings = {
+          ...settings,
+          proofRequiredTemplateIds: settings.proofRequiredTemplateIds.filter((id) => id !== templateId),
+        }
+        await db.settings.clear()
+        await db.settings.add(nextSettings)
+      }
+
+      for (const userId of affectedUserIds) {
+        const inventory = await rebuildInventory(userId)
+        await db.inventories.put(inventory)
+      }
+    })
     await log(actorId, 'template.delete', { templateId })
   },
 
@@ -218,11 +247,11 @@ export const repository = {
       const streakUpdate = updateStreaks(template.recurrence, inventory.streaks)
       const updatedInventory: UserInventory = {
         ...inventory,
-        items: updateInventoryItems(inventory.items, template.id),
+        items: updateInventoryItems(inventory.items, template.id, completion.completedAt),
         totalPoints: inventory.totalPoints + points,
         streaks: streakUpdate.state,
       }
-      updatedInventory.badges = awardBadges(updatedInventory, completion)
+      updatedInventory.badges = awardBadges(updatedInventory, completion, completion.completedAt)
       await db.inventories.put(updatedInventory)
       completion.streaksAwarded = streakUpdate.snapshot
     })
@@ -252,11 +281,17 @@ export const repository = {
       db.instances.toArray(),
       db.templates.toArray(),
     ])
-    return completions.map((completion) => {
-      const instance = instances.find((i) => i.id === completion.cardInstanceId)
-      const template = templates.find((t) => t.id === instance?.templateId)
-      return { completion, instance: instance!, template: template! }
-    })
+    const instanceMap = new Map(instances.map((instance) => [instance.id, instance]))
+    const templateMap = new Map(templates.map((template) => [template.id, template]))
+    return completions
+      .map((completion) => {
+        const instance = instanceMap.get(completion.cardInstanceId)
+        if (!instance) return null
+        const template = templateMap.get(instance.templateId)
+        if (!template) return null
+        return { completion, instance, template }
+      })
+      .filter((entry): entry is { completion: Completion; instance: CardInstance; template: CardTemplate } => entry !== null)
   },
 
   async getLeaderboard(range: 'week' | 'month' | 'all', now: Date = new Date()) {
@@ -372,21 +407,25 @@ function addSeconds(date: Date, seconds: number) {
   return new Date(date.getTime() + seconds * 1000)
 }
 
-function updateInventoryItems(items: UserInventory['items'], templateId: string): UserInventory['items'] {
+function updateInventoryItems(
+  items: UserInventory['items'],
+  templateId: string,
+  completedAt: string = new Date().toISOString(),
+): UserInventory['items'] {
   const existing = items.find((item) => item.templateId === templateId)
   if (existing) {
     existing.timesCompleted += 1
-    existing.lastCompletedAt = new Date().toISOString()
+    existing.lastCompletedAt = completedAt
     return [...items]
   }
-  return [...items, { templateId, timesCompleted: 1, lastCompletedAt: new Date().toISOString() }]
+  return [...items, { templateId, timesCompleted: 1, lastCompletedAt: completedAt }]
 }
 
-function awardBadges(inventory: UserInventory, completion: Completion) {
+function awardBadges(inventory: UserInventory, completion: Completion, awardedAt: string = new Date().toISOString()) {
   const badges = [...(inventory.badges ?? [])]
   const push = (badgeId: BadgeId, details?: Record<string, unknown>) => {
     if (badges.some((badge) => badge.badgeId === badgeId)) return
-    badges.push({ id: nanoid(), badgeId, unlockedAt: new Date().toISOString(), details })
+    badges.push({ id: nanoid(), badgeId, unlockedAt: awardedAt, details })
   }
 
   if (!badges.length) {
@@ -410,4 +449,33 @@ async function log(actorUserId: string, type: string, payload: unknown) {
     payload: { type, payload },
   }
   await db.auditLog.put(entry)
+}
+
+async function rebuildInventory(userId: string): Promise<UserInventory> {
+  const base: UserInventory = {
+    userId,
+    items: [],
+    totalPoints: 0,
+    badges: [],
+    streaks: { daily: 0, weekly: 0, monthly: 0, once: 0, longest: {} },
+  }
+  const completions = await db.completions.where('userId').equals(userId).sortBy('completedAt')
+  let inventory = base
+  for (const completion of completions) {
+    const instance = await db.instances.get(completion.cardInstanceId)
+    if (!instance) continue
+    const template = await db.templates.get(instance.templateId)
+    if (!template) continue
+    const streakUpdate = updateStreaks(template.recurrence, inventory.streaks)
+    const updated: UserInventory = {
+      ...inventory,
+      badges: [...inventory.badges],
+      items: updateInventoryItems(inventory.items, template.id, completion.completedAt),
+      totalPoints: inventory.totalPoints + completion.pointsAwarded,
+      streaks: streakUpdate.state,
+    }
+    updated.badges = awardBadges(updated, completion, completion.completedAt)
+    inventory = updated
+  }
+  return inventory
 }

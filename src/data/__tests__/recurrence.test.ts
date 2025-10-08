@@ -50,14 +50,16 @@ describe('computeExpiry', () => {
   it('ends daily quest at end of day', () => {
     const scheduled = new Date('2025-01-10T00:00:00Z')
     const expiry = computeExpiry(baseTemplate, scheduled, settings)
-    expect(expiry.getUTCDate()).toBe(10)
-    expect(expiry.getUTCHours()).toBe(23)
+    expect(expiry.getDate()).toBe(scheduled.getDate())
+    expect(expiry.getHours()).toBe(23)
+    expect(expiry.getMinutes()).toBe(59)
   })
 
   it('ends weekly quest at end of week', () => {
     const weekly: CardTemplate = { ...baseTemplate, recurrence: 'weekly', weekAnchor: 1 }
     const scheduled = new Date('2025-01-06T00:00:00Z')
     const expiry = computeExpiry(weekly, scheduled, settings)
-    expect(expiry.getUTCDate()).toBeGreaterThanOrEqual(12)
+    expect(expiry.getDay()).toBe(0)
+    expect(expiry.getHours()).toBe(23)
   })
 })

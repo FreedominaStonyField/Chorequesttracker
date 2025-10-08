@@ -70,6 +70,18 @@ export function EditorPage() {
     setMessage('Quest duplicated.')
   }
 
+  async function handleDelete(template: CardTemplate) {
+    if (!currentUser) {
+      setMessage('Only an authenticated hero may retire quests.')
+      return
+    }
+    const confirmed = window.confirm(`Archive "${template.title}" and remove it from future rotations?`)
+    if (!confirmed) return
+    await deleteTemplate.mutateAsync({ templateId: template.id, actorId: currentUser.id })
+    setSelectedTemplate(null)
+    setMessage('Quest template archived.')
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <div className="rounded-3xl border border-slate-700 bg-slate-900/70 p-5 text-sm text-slate-300">
@@ -197,6 +209,7 @@ export function EditorPage() {
             template={selectedTemplate}
             onSubmit={handleEditorSubmit}
             onCancel={() => setSelectedTemplate(null)}
+            onDelete={templates?.some((template) => template.id === selectedTemplate.id) ? handleDelete : undefined}
           />
         ) : (
           <p className="text-slate-300">Choose a hero before editing templates.</p>

@@ -95,6 +95,39 @@ export const repository = {
   },
 
   async deleteTemplate(templateId: string, actorId: string) {
+    const instances = readAll<CardInstance>('instances').filter((instance) => instance.templateId === templateId)
+    const instanceIds = new Set(instances.map((instance) => instance.id))
+
+    if (instanceIds.size > 0) {
+      const claims = readAll<Claim>('claims').filter((claim) => instanceIds.has(claim.cardInstanceId))
+      const completions = readAll<Completion>('completions').filter((completion) =>
+        instanceIds.has(completion.cardInstanceId),
+      )
+      const affectedUsers = new Set(completions.map((completion) => completion.userId))
+
+      for (const claim of claims) {
+        remove('claims', claim.id)
+      }
+      for (const completion of completions) {
+        remove('completions', completion.id)
+      }
+      for (const instance of instances) {
+        remove('instances', instance.id)
+      }
+      for (const userId of affectedUsers) {
+        const inventory = rebuildInventory(userId)
+        emit('inventory.update', { inventory })
+      }
+    }
+
+    const settings = readSettings()
+    if (settings.proofRequiredTemplateIds.includes(templateId)) {
+      writeSettings({
+        ...settings,
+        proofRequiredTemplateIds: settings.proofRequiredTemplateIds.filter((id) => id !== templateId),
+      })
+    }
+
     remove('templates', templateId)
     emit('template.delete', { templateId, actorId })
   },
@@ -148,19 +181,24 @@ export const repository = {
       readAll<Completion>('completions'),
     ]
 
-    return instances.map((instance) => {
-      const template = templates.find((t) => t.id === instance.templateId)
-      const assignedUser = instance.assignedTo
-        ? users.find((user) => user.id === instance.assignedTo)
-        : undefined
-      const completion = completions.find((c) => c.cardInstanceId === instance.id)
-      return {
-        ...instance,
-        template: template!,
-        assignedUser,
-        completion,
-      }
-    })
+    const templatesById = new Map(templates.map((template) => [template.id, template]))
+    const usersById = new Map(users.map((user) => [user.id, user]))
+    const completionByInstance = new Map(completions.map((completion) => [completion.cardInstanceId, completion]))
+
+    return instances
+      .map((instance) => {
+        const template = templatesById.get(instance.templateId)
+        if (!template) return null
+        const assignedUser = instance.assignedTo ? usersById.get(instance.assignedTo) : undefined
+        const completion = completionByInstance.get(instance.id)
+        return {
+          ...instance,
+          template,
+          assignedUser,
+          completion,
+        }
+      })
+      .filter((card): card is FeedCard => card !== null)
   },
 
   async claimCard(cardId: string, userId: string) {
@@ -240,11 +278,11 @@ export const repository = {
     const streakUpdate = updateStreaks(template.recurrence, inventory.streaks)
     const updatedInventory: UserInventory = {
       ...inventory,
-      items: updateInventoryItems(inventory.items, template.id),
+      items: updateInventoryItems(inventory.items, template.id, completion.completedAt),
       totalPoints: inventory.totalPoints + points,
       streaks: streakUpdate.state,
     }
-    updatedInventory.badges = awardBadges(updatedInventory, completion)
+    updatedInventory.badges = awardBadges(updatedInventory, completion, completion.completedAt)
     upsert('inventories', updatedInventory)
     completion.streaksAwarded = streakUpdate.snapshot
 
@@ -273,11 +311,17 @@ export const repository = {
     const completions = readAll<Completion>('completions').filter((completion) => completion.userId === userId)
     const instances = readAll<CardInstance>('instances')
     const templates = readAll<CardTemplate>('templates')
-    return completions.map((completion) => {
-      const instance = instances.find((i) => i.id === completion.cardInstanceId)
-      const template = templates.find((t) => t?.id === instance?.templateId)
-      return { completion, instance: instance!, template: template! }
-    })
+    const instancesById = new Map(instances.map((instance) => [instance.id, instance]))
+    const templatesById = new Map(templates.map((template) => [template.id, template]))
+    return completions
+      .map((completion) => {
+        const instance = instancesById.get(completion.cardInstanceId)
+        if (!instance) return null
+        const template = templatesById.get(instance.templateId)
+        if (!template) return null
+        return { completion, instance, template }
+      })
+      .filter((entry): entry is { completion: Completion; instance: CardInstance; template: CardTemplate } => entry !== null)
   },
 
   async saveSettings(settings: Settings) {
@@ -336,25 +380,67 @@ function computeExpiry(template: CardTemplate, scheduled: Date, settings: Settin
   }
 }
 
+function rebuildInventory(userId: string) {
+  const base: UserInventory = {
+    userId,
+    items: [],
+    totalPoints: 0,
+    badges: [],
+    streaks: { daily: 0, weekly: 0, monthly: 0, once: 0, longest: {} },
+  }
+  const completions = readAll<Completion>('completions')
+    .filter((completion) => completion.userId === userId)
+    .sort(
+      (a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime(),
+    )
+  let inventory = base
+  for (const completion of completions) {
+    const instance = readById<CardInstance>('instances', completion.cardInstanceId)
+    if (!instance) continue
+    const template = readById<CardTemplate>('templates', instance.templateId)
+    if (!template) continue
+    const streakUpdate = updateStreaks(template.recurrence, inventory.streaks)
+    const updated: UserInventory = {
+      ...inventory,
+      badges: [...inventory.badges],
+      items: updateInventoryItems(inventory.items, template.id, completion.completedAt),
+      totalPoints: inventory.totalPoints + completion.pointsAwarded,
+      streaks: streakUpdate.state,
+    }
+    updated.badges = awardBadges(updated, completion, completion.completedAt)
+    inventory = updated
+  }
+  upsert('inventories', inventory)
+  return inventory
+}
+
 function addSeconds(date: Date, seconds: number) {
   return new Date(date.getTime() + seconds * 1000)
 }
 
-function updateInventoryItems(items: UserInventory['items'], templateId: string): UserInventory['items'] {
+function updateInventoryItems(
+  items: UserInventory['items'],
+  templateId: string,
+  completedAt: string = new Date().toISOString(),
+): UserInventory['items'] {
   const existing = items.find((item) => item.templateId === templateId)
   if (existing) {
     existing.timesCompleted += 1
-    existing.lastCompletedAt = new Date().toISOString()
+    existing.lastCompletedAt = completedAt
     return [...items]
   }
-  return [...items, { templateId, timesCompleted: 1, lastCompletedAt: new Date().toISOString() }]
+  return [...items, { templateId, timesCompleted: 1, lastCompletedAt: completedAt }]
 }
 
-function awardBadges(inventory: UserInventory, completion: Completion) {
+function awardBadges(
+  inventory: UserInventory,
+  completion: Completion,
+  awardedAt: string = new Date().toISOString(),
+) {
   const badges = [...(inventory.badges ?? [])]
   const push = (badgeId: BadgeId, details?: Record<string, unknown>) => {
     if (badges.some((badge) => badge.badgeId === badgeId)) return
-    badges.push({ id: nanoid(), badgeId, unlockedAt: new Date().toISOString(), details })
+    badges.push({ id: nanoid(), badgeId, unlockedAt: awardedAt, details })
   }
 
   if (!badges.length) {

@@ -3,7 +3,13 @@ import { useMemo, useState } from 'react'
 import { QuestFilters } from '../components/QuestFilters'
 import { QuestCard } from '../components/QuestCard'
 import { questFilterAtom, currentUserAtom } from '../lib/state'
-import { useClaimMutation, useCompleteMutation, useFeed, useUpsertTemplateMutation } from '../hooks/useRepository'
+import {
+  useClaimMutation,
+  useCompleteMutation,
+  useDeleteTemplateMutation,
+  useFeed,
+  useUpsertTemplateMutation,
+} from '../hooks/useRepository'
 import { Modal } from '../components/Modal'
 import { CardEditorForm } from '../features/editor/CardEditorForm'
 import type { CardTemplate, CardStatus, Difficulty } from '../types'
@@ -16,7 +22,9 @@ export function FeedPage() {
   const claimMutation = useClaimMutation()
   const completeMutation = useCompleteMutation()
   const upsertTemplate = useUpsertTemplateMutation()
-  const [showEditor, setShowEditor] = useState(false)
+  const deleteTemplate = useDeleteTemplateMutation()
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editorTemplate, setEditorTemplate] = useState<CardTemplate | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const filtered = useMemo<FeedCard[]>(() => {
@@ -78,14 +86,38 @@ export function FeedPage() {
     }
   }
 
-  function handleQuickCreate(template: CardTemplate) {
+  async function handleSaveTemplate(template: CardTemplate) {
     if (!currentUser) {
       setFeedback('Choose a hero to craft new quests.')
       return
     }
-    upsertTemplate.mutate({ template: { ...template, createdBy: currentUser.id }, actorId: currentUser.id })
-    setShowEditor(false)
-    setFeedback('Quest crafted and ready!')
+    const isEditing = Boolean(editorTemplate)
+    const payload = { ...template, createdBy: template.createdBy ?? currentUser.id }
+    try {
+      await upsertTemplate.mutateAsync({ template: payload, actorId: currentUser.id })
+      setFeedback(isEditing ? 'Quest updated!' : 'Quest crafted and ready!')
+      setEditorOpen(false)
+      setEditorTemplate(null)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Unable to save quest')
+    }
+  }
+
+  async function handleDeleteTemplate(template: CardTemplate) {
+    if (!currentUser) {
+      setFeedback('Choose a hero to retire quests.')
+      return
+    }
+    const confirmed = window.confirm(`Remove the "${template.title}" quest template?`)
+    if (!confirmed) return
+    try {
+      await deleteTemplate.mutateAsync({ templateId: template.id, actorId: currentUser.id })
+      setFeedback('Quest retired.')
+      setEditorOpen(false)
+      setEditorTemplate(null)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Unable to retire quest')
+    }
   }
 
   return (
@@ -100,7 +132,10 @@ export function FeedPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setShowEditor(true)}
+            onClick={() => {
+              setEditorTemplate(null)
+              setEditorOpen(true)
+            }}
             className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow hover:bg-indigo-500"
           >
             + Quick craft quest
@@ -121,15 +156,45 @@ export function FeedPage() {
               currentUser={currentUser ?? undefined}
               onClaim={() => handleClaim(card.id)}
               onComplete={() => handleComplete(card.id)}
+              onEditTemplate={
+                currentUser?.isAdult ? () => {
+                  setEditorTemplate(card.template)
+                  setEditorOpen(true)
+                } : undefined
+              }
+              onArchiveTemplate={
+                currentUser?.isAdult
+                  ? () => {
+                      void handleDeleteTemplate(card.template)
+                    }
+                  : undefined
+              }
               disabledReason={card.assignedTo && card.assignedTo !== currentUser?.id ? 'Claimed by another hero' : undefined}
             />
           ))}
         </div>
       )}
 
-      <Modal open={showEditor} onClose={() => setShowEditor(false)} title="Craft a new quest" wide>
+      <Modal
+        open={editorOpen}
+        onClose={() => {
+          setEditorOpen(false)
+          setEditorTemplate(null)
+        }}
+        title={editorTemplate ? `Edit ${editorTemplate.title}` : 'Craft a new quest'}
+        wide
+      >
         {currentUser ? (
-          <CardEditorForm currentUserId={currentUser.id} onSubmit={handleQuickCreate} />
+          <CardEditorForm
+            currentUserId={currentUser.id}
+            template={editorTemplate ?? undefined}
+            onSubmit={(template) => handleSaveTemplate(template)}
+            onDelete={editorTemplate ? (template) => handleDeleteTemplate(template) : undefined}
+            onCancel={() => {
+              setEditorOpen(false)
+              setEditorTemplate(null)
+            }}
+          />
         ) : (
           <p className="text-slate-300">Choose a hero before crafting quests.</p>
         )}

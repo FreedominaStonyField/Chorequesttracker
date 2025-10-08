@@ -12,9 +12,10 @@ interface CardEditorFormProps {
   currentUserId: string
   onSubmit: (template: CardTemplate) => Promise<void> | void
   onCancel?: () => void
+  onDelete?: (template: CardTemplate) => Promise<void> | void
 }
 
-export function CardEditorForm({ template, currentUserId, onSubmit, onCancel }: CardEditorFormProps) {
+export function CardEditorForm({ template, currentUserId, onSubmit, onCancel, onDelete }: CardEditorFormProps) {
   const [form, setForm] = useState<CardTemplate>(() =>
     template ?? {
       id: nanoid(),
@@ -201,6 +202,15 @@ export function CardEditorForm({ template, currentUserId, onSubmit, onCancel }: 
               className="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-primary"
             >
               Cancel
+            </button>
+          )}
+          {onDelete && template && (
+            <button
+              type="button"
+              onClick={() => onDelete({ ...form })}
+              className="rounded-xl border border-red-500/60 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20"
+            >
+              Remove Quest
             </button>
           )}
         </div>

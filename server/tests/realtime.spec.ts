@@ -2,22 +2,14 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { io, type Socket } from 'socket.io-client'
 import { startServer } from '../src/index'
 import type { Completion } from 'shared/types'
-import { existsSync, rmSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const dbFile = path.resolve(__dirname, '../data/chorequest.sqlite')
+import { resetDatabase } from '../src/database'
 
 let httpServer: Awaited<ReturnType<typeof startServer>>['httpServer']
 let baseUrl: string
 let sockets: Socket[] = []
 
 beforeEach(async () => {
-  if (existsSync(dbFile)) {
-    rmSync(dbFile)
-  }
+  resetDatabase()
   const server = await startServer(0)
   httpServer = server.httpServer
   const address = httpServer.address()
@@ -32,7 +24,9 @@ afterEach(async () => {
     socket.disconnect()
   }
   sockets = []
-  await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+  if (httpServer) {
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+  }
 })
 
 test('completing a quest broadcasts to connected clients', async () => {

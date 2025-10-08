@@ -10,6 +10,8 @@ interface QuestCardProps {
   currentUser?: User | null
   onClaim: () => void
   onComplete: () => void
+  onEditTemplate?: () => void
+  onArchiveTemplate?: () => void
   disabledReason?: string
 }
 
@@ -22,7 +24,15 @@ const recurrenceLabels: Record<string, string> = {
 
 const completionLines = ['Quest turned in!', 'Loot secured!', 'The guild sings your praises!', 'XP gained!']
 
-export function QuestCard({ card, currentUser, onClaim, onComplete, disabledReason }: QuestCardProps) {
+export function QuestCard({
+  card,
+  currentUser,
+  onClaim,
+  onComplete,
+  onEditTemplate,
+  onArchiveTemplate,
+  disabledReason,
+}: QuestCardProps) {
   const isMine = card.assignedTo === currentUser?.id
   const isClaimed = card.status === 'claimed'
   const isCompleted = card.status === 'completed'
@@ -40,9 +50,29 @@ export function QuestCard({ card, currentUser, onClaim, onComplete, disabledReas
       <div className="absolute inset-0 -z-10 bg-gradient-to-br from-slate-900 via-slate-900/40 to-slate-900" aria-hidden />
       <div className="flex items-center justify-between gap-3">
         <DifficultyBadge difficulty={card.template.difficulty} />
-        <span className="text-xs font-semibold uppercase tracking-widest text-primary/70">
-          {recurrenceLabels[card.template.recurrence]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-widest text-primary/70">
+            {recurrenceLabels[card.template.recurrence]}
+          </span>
+          {onEditTemplate && (
+            <button
+              type="button"
+              onClick={onEditTemplate}
+              className="rounded-lg border border-slate-600 px-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-slate-200 hover:border-primary"
+            >
+              Edit
+            </button>
+          )}
+          {onArchiveTemplate && (
+            <button
+              type="button"
+              onClick={onArchiveTemplate}
+              className="rounded-lg border border-red-500/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-red-300 hover:bg-red-500/20"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
       <h3 className="mt-4 text-xl font-bold text-white">{card.template.title}</h3>
       <p className="mt-2 text-sm text-slate-300">{card.template.flavorText}</p>

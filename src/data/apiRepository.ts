@@ -11,7 +11,12 @@ import type {
   UserInventory,
 } from 'shared/types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api'
+const fallbackHost =
+  typeof window !== 'undefined' && window.location.hostname
+    ? window.location.hostname
+    : 'localhost'
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? `http://${fallbackHost}:4000/api`
 const SOCKET_URL = API_BASE_URL.replace(/\/api$/, '')
 
 let socket: Socket | null = null
@@ -119,13 +124,6 @@ export const apiRepository = {
   async getHistory(userId: string) {
     return request<Array<{ completion: Completion; instance: CardInstance; template: CardTemplate }>>(
       `/users/${userId}/history`
-    )
-  },
-
-  async getLeaderboard(range: 'week' | 'month' | 'all') {
-    const params = new URLSearchParams({ range })
-    return request<Array<{ user: User; points: number; completions: number; earliest: string }>>(
-      `/leaderboard?${params.toString()}`
     )
   },
 

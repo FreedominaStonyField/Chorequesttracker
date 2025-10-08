@@ -1,16 +1,4 @@
-import {
-  addDays,
-  differenceInSeconds,
-  endOfDay,
-  endOfMonth,
-  endOfWeek,
-  isAfter,
-  isBefore,
-  isSameDay,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
-} from 'date-fns'
+import { addDays, differenceInSeconds, endOfDay, endOfMonth, endOfWeek, isSameDay, startOfDay } from 'date-fns'
 import { nanoid } from 'nanoid'
 import { EventEmitter } from 'node:events'
 import {
@@ -290,47 +278,6 @@ export const repository = {
       const template = templates.find((t) => t?.id === instance?.templateId)
       return { completion, instance: instance!, template: template! }
     })
-  },
-
-  async getLeaderboard(range: 'week' | 'month' | 'all', now: Date = new Date()) {
-    const completions = readAll<Completion>('completions')
-    const users = readAll<User>('users')
-
-    const filtered = completions.filter((completion) => {
-      const completedAt = new Date(completion.completedAt)
-      switch (range) {
-        case 'week':
-          return isAfter(completedAt, startOfWeek(now, { weekStartsOn: 1 }))
-        case 'month':
-          return isAfter(completedAt, startOfMonth(now))
-        default:
-          return true
-      }
-    })
-
-    const scores = new Map<string, { points: number; completions: number; earliest: Date }>()
-
-    for (const completion of filtered) {
-      const entry = scores.get(completion.userId) ?? {
-        points: 0,
-        completions: 0,
-        earliest: new Date(completion.completedAt),
-      }
-      entry.points += completion.pointsAwarded
-      entry.completions += 1
-      entry.earliest = isBefore(new Date(completion.completedAt), entry.earliest)
-        ? new Date(completion.completedAt)
-        : entry.earliest
-      scores.set(completion.userId, entry)
-    }
-
-    return [...scores.entries()]
-      .map(([userId, data]) => ({ user: users.find((u) => u.id === userId)!, ...data }))
-      .sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points
-        if (b.completions !== a.completions) return b.completions - a.completions
-        return a.earliest.getTime() - b.earliest.getTime()
-      })
   },
 
   async saveSettings(settings: Settings) {

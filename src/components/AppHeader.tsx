@@ -53,17 +53,6 @@ export function AppHeader({ currentUser, onUserSelect, actions }: AppHeaderProps
           My Pile
         </NavLink>
         <NavLink
-          to="/leaderboard"
-          className={({ isActive }) =>
-            clsx(
-              'rounded-full px-4 py-2 transition',
-              isActive ? 'bg-primary/20 text-primary-foreground shadow' : 'hover:bg-slate-800/70',
-            )
-          }
-        >
-          Leaderboard
-        </NavLink>
-        <NavLink
           to="/settings"
           className={({ isActive }) =>
             clsx(

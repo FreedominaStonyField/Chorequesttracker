@@ -7,7 +7,6 @@ const keys = {
   users: ['users'] as const,
   templates: ['templates'] as const,
   feed: ['feed'] as const,
-  leaderboard: (range: 'week' | 'month' | 'all') => ['leaderboard', range] as const,
   history: (userId: string) => ['history', userId] as const,
   inventory: (userId: string) => ['inventory', userId] as const,
   settings: ['settings'] as const,
@@ -23,10 +22,6 @@ export function useTemplates() {
 
 export function useFeed() {
   return useQuery({ queryKey: keys.feed, queryFn: () => apiRepository.getFeed() })
-}
-
-export function useLeaderboard(range: 'week' | 'month' | 'all') {
-  return useQuery({ queryKey: keys.leaderboard(range), queryFn: () => apiRepository.getLeaderboard(range) })
 }
 
 export function useHistory(userId?: string) {
@@ -102,7 +97,6 @@ export function useDeleteUserMutation() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: keys.users })
       client.invalidateQueries({ queryKey: keys.feed })
-      client.invalidateQueries({ queryKey: keys.leaderboard('all') })
     },
   })
 }
@@ -139,9 +133,6 @@ export function useCompleteMutation() {
       if (variables.userId) {
         client.invalidateQueries({ queryKey: keys.history(variables.userId) })
         client.invalidateQueries({ queryKey: keys.inventory(variables.userId) })
-        client.invalidateQueries({ queryKey: keys.leaderboard('week') })
-        client.invalidateQueries({ queryKey: keys.leaderboard('month') })
-        client.invalidateQueries({ queryKey: keys.leaderboard('all') })
       }
     },
   })
@@ -188,9 +179,6 @@ export function useRepositoryEvents() {
             client.invalidateQueries({ queryKey: keys.inventory(inventory.userId) })
             client.invalidateQueries({ queryKey: keys.history(inventory.userId) })
           }
-          client.invalidateQueries({ queryKey: keys.leaderboard('week') })
-          client.invalidateQueries({ queryKey: keys.leaderboard('month') })
-          client.invalidateQueries({ queryKey: keys.leaderboard('all') })
           break
         }
         case 'settings.update':

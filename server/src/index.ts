@@ -114,11 +114,6 @@ export function createApp() {
     res.status(201).json(await repository.completeCard(cardId, userId, proof))
   }))
 
-  app.get('/api/leaderboard', asyncHandler(async (req, res) => {
-    const range = (req.query.range as 'week' | 'month' | 'all') ?? 'all'
-    res.json(await repository.getLeaderboard(range))
-  }))
-
   app.get('/api/settings', asyncHandler(async (_req, res) => {
     res.json(await repository.getSettings())
   }))
@@ -134,6 +129,7 @@ export function createApp() {
   }))
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    void _next;
     console.error(err)
     res.status(500).json({ message: err instanceof Error ? err.message : 'Internal Server Error' })
   })

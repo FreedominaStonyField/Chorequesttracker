@@ -9,7 +9,6 @@ QuestBoard is a mobile-first React + TypeScript progressive web app that turns r
 - 🧾 **My Pile history** – Timeline of every completion with export to CSV/JSON plus filter by tag, difficulty, recurrence, or date range.
 - 🛠️ **Template forge** – Create, duplicate, activate/deactivate, or bulk-edit quest templates with live previews.
 - 🧑‍🤝‍🧑 **Roster management** – Add users with avatars, colours, and optional household PINs; adult guardians can manage everything.
-- 🏆 **Leaderboard** – Weekly, monthly, and all-time scoreboards with tie-breaking by completions and earliest turn-ins.
 - 🔔 **Gamification** – Difficulty multipliers, streak tracking, badge unlocks, and rotating quest completion flavour lines.
 - 📱 **PWA ready** – Installable on iOS/Android/desktop with offline create/claim/complete flows powered by React Query + Dexie.
 - ♿ **Accessibility** – High-contrast palette, focus-visible styles, semantic labelling, and screen-reader friendly copy.
@@ -31,6 +30,12 @@ npm --prefix server run backend:dev # Backend on http://localhost:4000
 ```
 
 The repository is configured as an npm workspace, so the server dependencies are installed automatically when you run `npm install` at the root.
+
+### PowerShell helpers (Windows)
+
+- `.\Start-QuestBoard.ps1` – Installs dependencies (unless already present) and launches the frontend and backend in separate PowerShell windows. Flags: `-SkipInstall`, `-ForceInstall`, `-FrontendOnly`, `-BackendOnly`.
+- `.\Test-QuestBoard.ps1` – Runs linting (unless `-SkipLint`) and the requested test suites. Flags: `-SkipInstall`, `-ForceInstall`, `-SkipLint`, `-FrontendOnly`, `-BackendOnly`.
+- `.\Start-QuestBoardLan.ps1` – Boots the dev servers for LAN testing, preferring private IPv4 addresses (and listing alternates) while setting `VITE_API_BASE_URL` automatically. Flags: `-Address`, `-FrontendPort`, `-BackendPort`, `-SkipInstall`, `-ForceInstall`, `-FrontendOnly`, `-BackendOnly`. Accept inbound firewall prompts so other devices can reach the printed URLs.
 
 Open http://localhost:5173 in your browser. The seed loader populates four demo users and twelve chore templates on first launch, while the backend seeds the same data in SQLite for API-backed persistence.
 
@@ -91,7 +96,7 @@ src/
   features/          Domain-specific UI like the card editor
   hooks/             React Query hooks and helpers
   lib/               Utility modules for scoring, streaks, query client
-  pages/             Route components (feed, history, leaderboard, settings, editor)
+  pages/             Route components (feed, history, settings, editor)
   pwa/               (reserved for future sync workers)
   types.ts           Core domain models
 shared/

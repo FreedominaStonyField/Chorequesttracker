@@ -9,7 +9,6 @@ import { BottomTabBar } from './components/BottomTabBar'
 import { UserPicker } from './components/UserPicker'
 import { FeedPage } from './pages/FeedPage'
 import { HistoryPage } from './pages/HistoryPage'
-import { LeaderboardPage } from './pages/LeaderboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { EditorPage } from './pages/EditorPage'
 
@@ -49,7 +48,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<FeedPage />} />
             <Route path="/pile" element={<HistoryPage />} />
-            <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/editor" element={<EditorPage />} />
             <Route path="*" element={<FeedPage />} />
